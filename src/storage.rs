@@ -76,8 +76,17 @@ mod tests {
     #[test]
     fn test_paths() {
         let storage = FileStorage::new("runs");
-        assert_eq!(storage.config_path("test-run"), PathBuf::from("runs/test-run/config.json"));
-        assert_eq!(storage.state_path("test-run"), PathBuf::from("runs/test-run/state.json"));
-        assert_eq!(storage.final_path("test-run"), PathBuf::from("runs/test-run/final.json"));
+        assert_eq!(
+            storage.config_path("test-run"),
+            PathBuf::from("runs/test-run/config.json")
+        );
+        assert_eq!(
+            storage.state_path("test-run"),
+            PathBuf::from("runs/test-run/state.json")
+        );
+        assert_eq!(
+            storage.final_path("test-run"),
+            PathBuf::from("runs/test-run/final.json")
+        );
     }
 }
