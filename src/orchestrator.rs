@@ -1,237 +1,153 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
+use std::fs;
 use std::path::PathBuf;
-use uuid::Uuid;
 
-use crate::config::RunConfig;
-use crate::data::{Event, EventType, State};
-use crate::llm::{LlmProvider, MockLlmProvider};
-use crate::phase::{
-    CriticPhase, FinalPhase, GeneratePhase, Phase, PhaseContext, RefinePhase, SelectPhase,
-};
-use crate::scoring::{check_max_rounds_stop, check_stagnation_stop, check_threshold_stop};
-use crate::storage::{FileStorage, Storage};
+/// List all runs in the given directory
+pub fn list_runs(dir: &str) -> Result<()> {
+    let runs_path = PathBuf::from(dir);
 
-pub struct Orchestrator {
-    config: RunConfig,
-    storage: Box<dyn Storage>,
-    llm: Box<dyn LlmProvider>,
-    state: State,
-    phases: Vec<Box<dyn Phase>>,
-    schema_dir: PathBuf,
-}
-
-impl Orchestrator {
-    pub fn new(config: RunConfig) -> Result<Self> {
-        let storage = Box::new(FileStorage::new(&config.output_dir));
-        let run_id = storage.init_run(&config)?;
-
-        let llm: Box<dyn LlmProvider> = match config.mode.as_str() {
-            "mock" => Box::new(MockLlmProvider::new()),
-            _ => Box::new(MockLlmProvider::new()), // TODO: Add other providers
-        };
-
-        let state = State::new(run_id);
-
-        // MVP pipeline: Generate -> Critic -> Select -> Refine
-        let phases: Vec<Box<dyn Phase>> = vec![
-            Box::new(GeneratePhase),
-            Box::new(CriticPhase),
-            Box::new(SelectPhase),
-            Box::new(RefinePhase { top_k: 2 }),
-        ];
-
-        let schema_dir = PathBuf::from("schemas");
-
-        Ok(Self {
-            config,
-            storage,
-            llm,
-            state,
-            phases,
-            schema_dir,
-        })
-    }
-
-    pub fn resume(run_id: &str, additional_rounds: Option<u32>) -> Result<Self> {
-        let run_uuid: Uuid = run_id.parse().context("Invalid run ID")?;
-
-        // Find the run directory
-        let storage = Box::new(FileStorage::new("runs"));
-        let mut config = storage.load_config(&run_uuid)?;
-
-        if let Some(extra) = additional_rounds {
-            config.max_rounds += extra;
-        }
-
-        let state = storage.load_state(&run_uuid)?;
-
-        let llm: Box<dyn LlmProvider> = match config.mode.as_str() {
-            "mock" => Box::new(MockLlmProvider::new()),
-            _ => Box::new(MockLlmProvider::new()),
-        };
-
-        let phases: Vec<Box<dyn Phase>> = vec![
-            Box::new(GeneratePhase),
-            Box::new(CriticPhase),
-            Box::new(SelectPhase),
-            Box::new(RefinePhase { top_k: 2 }),
-        ];
-
-        let schema_dir = PathBuf::from("schemas");
-
-        Ok(Self {
-            config,
-            storage,
-            llm,
-            state,
-            phases,
-            schema_dir,
-        })
-    }
-
-    pub fn run(&mut self) -> Result<()> {
-        tracing::info!(
-            run_id = %self.state.run_id,
-            max_rounds = self.config.max_rounds,
-            "Starting evolution loop"
-        );
-
-        loop {
-            self.state.iteration += 1;
-            tracing::info!(iteration = self.state.iteration, "Starting iteration");
-
-            // Run phases
-            let ctx = PhaseContext {
-                config: &self.config,
-                storage: self.storage.as_ref(),
-                llm: self.llm.as_ref(),
-                schema_dir: &self.schema_dir,
-            };
-
-            for phase in &self.phases {
-                tracing::debug!(phase = phase.name(), "Running phase");
-                self.state = phase.run(self.state.clone(), &ctx)?;
-                self.storage.save_state(&self.state)?;
-            }
-
-            // Check stop conditions
-            if check_threshold_stop(self.state.best_score, self.config.score_threshold) {
-                tracing::info!(
-                    best_score = ?self.state.best_score,
-                    threshold = self.config.score_threshold,
-                    "Stopping: threshold reached"
-                );
-                self.record_stop("threshold")?;
-                break;
-            }
-
-            if check_stagnation_stop(
-                self.state.stagnation_counter,
-                self.config.stagnation_patience,
-            ) {
-                tracing::info!(
-                    stagnation = self.state.stagnation_counter,
-                    patience = self.config.stagnation_patience,
-                    "Stopping: stagnation"
-                );
-                self.record_stop("stagnation")?;
-                break;
-            }
-
-            if check_max_rounds_stop(self.state.iteration, self.config.max_rounds) {
-                tracing::info!(
-                    iteration = self.state.iteration,
-                    max_rounds = self.config.max_rounds,
-                    "Stopping: max rounds reached"
-                );
-                self.record_stop("max_rounds")?;
-                break;
-            }
-        }
-
-        // Compose final result
-        let final_phase = FinalPhase;
-        let ctx = PhaseContext {
-            config: &self.config,
-            storage: self.storage.as_ref(),
-            llm: self.llm.as_ref(),
-            schema_dir: &self.schema_dir,
-        };
-        self.state = final_phase.run(self.state.clone(), &ctx)?;
-        self.storage.save_state(&self.state)?;
-
-        tracing::info!(
-            run_id = %self.state.run_id,
-            iterations = self.state.iteration,
-            best_score = ?self.state.best_score,
-            "Evolution complete"
-        );
-
-        // Print result location
-        println!("Run complete: runs/{}/final.json", self.state.run_id);
-
-        Ok(())
-    }
-
-    fn record_stop(&self, reason: &str) -> Result<()> {
-        let event = Event::new(
-            self.state.iteration,
-            EventType::Stopped,
-            serde_json::json!({
-                "reason": reason,
-                "best_score": self.state.best_score,
-                "best_idea_id": self.state.best_idea_id
-            }),
-        );
-        self.storage.append_event(&self.state.run_id, &event)?;
-        Ok(())
-    }
-}
-
-pub fn show_run(run_id: &str, format: &str) -> Result<()> {
-    let run_uuid: Uuid = run_id.parse().context("Invalid run ID")?;
-    let storage = FileStorage::new("runs");
-
-    let final_path = PathBuf::from("runs").join(run_id).join("final.json");
-
-    if !final_path.exists() {
-        println!("Run {} has not completed yet.", run_id);
-        let state = storage.load_state(&run_uuid)?;
-        println!("Current iteration: {}", state.iteration);
-        println!("Active ideas: {}", state.active_ideas().count());
-        println!("Best score: {:?}", state.best_score);
+    if !runs_path.exists() {
+        println!("No runs directory found at: {}", dir);
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&final_path)?;
+    let mut runs: Vec<(String, String, Option<f32>)> = Vec::new();
+
+    for entry in fs::read_dir(&runs_path)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let run_id = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            let final_path = path.join("final.json");
+            let state_path = path.join("state.json");
+
+            let (status, best_score) = if final_path.exists() {
+                // Try to parse final.json to get best score
+                let score = fs::read_to_string(&final_path)
+                    .ok()
+                    .and_then(|content| {
+                        serde_json::from_str::<serde_json::Value>(&content).ok()
+                    })
+                    .and_then(|v| {
+                        v.get("best_idea")
+                            .and_then(|b| b.get("overall_score"))
+                            .and_then(|s| s.as_f64())
+                            .map(|s| s as f32)
+                    });
+                ("complete".to_string(), score)
+            } else if state_path.exists() {
+                ("in_progress".to_string(), None)
+            } else {
+                ("unknown".to_string(), None)
+            };
+
+            runs.push((run_id, status, best_score));
+        }
+    }
+
+    if runs.is_empty() {
+        println!("No runs found in: {}", dir);
+        return Ok(());
+    }
+
+    // Sort by run_id (newest first, assuming timestamp-based IDs)
+    runs.sort_by(|a, b| b.0.cmp(&a.0));
+
+    println!("Runs in {}:", dir);
+    println!("{:<30} {:<12} BEST SCORE", "RUN ID", "STATUS");
+    println!("{}", "-".repeat(55));
+
+    for (run_id, status, best_score) in runs {
+        let score_str = best_score
+            .map(|s| format!("{:.2}", s))
+            .unwrap_or_else(|| "-".to_string());
+        println!("{:<30} {:<12} {}", run_id, status, score_str);
+    }
+
+    Ok(())
+}
+
+/// Show run results
+pub fn show_run(run_id: &str, format: &str) -> Result<()> {
+    let final_path = PathBuf::from("runs").join(run_id).join("final.json");
+
+    if !final_path.exists() {
+        // Check if run exists at all
+        let state_path = PathBuf::from("runs").join(run_id).join("state.json");
+        if state_path.exists() {
+            let content = fs::read_to_string(&state_path)?;
+            let state: serde_json::Value = serde_json::from_str(&content)?;
+
+            println!("Run {} has not completed yet.", run_id);
+            if let Some(iteration) = state.get("iteration") {
+                println!("Current iteration: {}", iteration);
+            }
+            if let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) {
+                let active = ideas.iter()
+                    .filter(|i| i.get("status").and_then(|s| s.as_str()) == Some("active"))
+                    .count();
+                println!("Active ideas: {}", active);
+            }
+            if let Some(best_score) = state.get("best_score") {
+                println!("Best score: {}", best_score);
+            }
+            return Ok(());
+        }
+
+        anyhow::bail!("Run {} not found", run_id);
+    }
+
+    let content = fs::read_to_string(&final_path)?;
 
     match format {
         "json" => println!("{}", content),
         "md" => {
-            let result: crate::data::FinalResult = serde_json::from_str(&content)?;
-            println!("# Best Idea: {}\n", result.best.title);
-            println!("{}\n", result.best.summary);
-            println!("## Scores");
-            println!("- Overall: {:.2}", result.best.overall_score);
-            println!("- Feasibility: {:.1}", result.best.scores.feasibility);
-            println!("- Speed to Value: {:.1}", result.best.scores.speed_to_value);
-            println!(
-                "- Differentiation: {:.1}",
-                result.best.scores.differentiation
-            );
-            println!("- Market Size: {:.1}", result.best.scores.market_size);
-            println!("- Distribution: {:.1}", result.best.scores.distribution);
-            println!("- Moats: {:.1}", result.best.scores.moats);
-            println!("- Risk: {:.1}", result.best.scores.risk);
-            println!("- Clarity: {:.1}", result.best.scores.clarity);
-            println!("\n## Why It Won");
-            for reason in &result.best.why_won {
-                println!("- {}", reason);
+            let result: serde_json::Value = serde_json::from_str(&content)?;
+
+            if let Some(best) = result.get("best_idea") {
+                let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+                let score = best.get("overall_score")
+                    .and_then(|s| s.as_f64())
+                    .map(|s| format!("{:.2}", s))
+                    .unwrap_or_else(|| "-".to_string());
+
+                println!("# Best Idea: {}\n", title);
+                println!("**Score:** {}/10\n", score);
+                println!("{}\n", summary);
+
+                if let Some(facets) = best.get("facets") {
+                    println!("## Details\n");
+                    if let Some(audience) = facets.get("audience").and_then(|a| a.as_str()) {
+                        println!("**Audience:** {}", audience);
+                    }
+                    if let Some(jtbd) = facets.get("jtbd").and_then(|j| j.as_str()) {
+                        println!("**Problem:** {}", jtbd);
+                    }
+                    if let Some(diff) = facets.get("differentiator").and_then(|d| d.as_str()) {
+                        println!("**Unique:** {}", diff);
+                    }
+                    if let Some(mon) = facets.get("monetization").and_then(|m| m.as_str()) {
+                        println!("**Monetization:** {}", mon);
+                    }
+                    if let Some(dist) = facets.get("distribution").and_then(|d| d.as_str()) {
+                        println!("**Distribution:** {}", dist);
+                    }
+                    if let Some(risks) = facets.get("risks").and_then(|r| r.as_str()) {
+                        println!("**Risks:** {}", risks);
+                    }
+                }
             }
-            if !result.runners_up.is_empty() {
-                println!("\n## Runners Up");
-                for runner in &result.runners_up {
-                    println!("- {} (score: {:.2})", runner.title, runner.overall_score);
+
+            if let Some(runner_up) = result.get("runner_up") {
+                if !runner_up.is_null() {
+                    let title = runner_up.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                    println!("\n## Runner Up: {}", title);
                 }
             }
         }
@@ -241,70 +157,127 @@ pub fn show_run(run_id: &str, format: &str) -> Result<()> {
     Ok(())
 }
 
+/// Validate run artifacts
 pub fn validate_run(run_id: &str) -> Result<()> {
-    let run_uuid: Uuid = run_id.parse().context("Invalid run ID")?;
-    let storage = FileStorage::new("runs");
+    let run_dir = PathBuf::from("runs").join(run_id);
+
+    if !run_dir.exists() {
+        anyhow::bail!("Run directory not found: {}", run_id);
+    }
+
+    let mut errors = Vec::new();
 
     // Validate config exists
-    let config = storage.load_config(&run_uuid)?;
-    println!(
-        "Config: OK (prompt: {}...)",
-        &config.prompt[..config.prompt.len().min(30)]
-    );
+    let config_path = run_dir.join("config.json");
+    if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(content) => {
+                match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(config) => {
+                        let prompt = config.get("prompt")
+                            .and_then(|p| p.as_str())
+                            .unwrap_or("?");
+                        let truncated = if prompt.len() > 30 { &prompt[..30] } else { prompt };
+                        println!("Config: OK (prompt: {}...)", truncated);
+                    }
+                    Err(e) => errors.push(format!("Config JSON invalid: {}", e)),
+                }
+            }
+            Err(e) => errors.push(format!("Config read error: {}", e)),
+        }
+    } else {
+        errors.push("Config: MISSING".to_string());
+    }
 
     // Validate state
-    let state = storage.load_state(&run_uuid)?;
-    println!(
-        "State: OK (iteration: {}, ideas: {})",
-        state.iteration,
-        state.ideas.len()
-    );
+    let state_path = run_dir.join("state.json");
+    if state_path.exists() {
+        match fs::read_to_string(&state_path) {
+            Ok(content) => {
+                match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(state) => {
+                        let iteration = state.get("iteration").and_then(|i| i.as_u64()).unwrap_or(0);
+                        let ideas_count = state.get("ideas")
+                            .and_then(|i| i.as_array())
+                            .map(|a| a.len())
+                            .unwrap_or(0);
+                        println!("State: OK (iteration: {}, ideas: {})", iteration, ideas_count);
+
+                        // Validate idea invariants
+                        if let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) {
+                            for idea in ideas {
+                                let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+                                let origin = idea.get("origin").and_then(|o| o.as_str()).unwrap_or("?");
+                                let parents = idea.get("parents").and_then(|p| p.as_array());
+                                let has_parents = parents.map(|p| !p.is_empty()).unwrap_or(false);
+
+                                match origin {
+                                    "generated" => {
+                                        if has_parents {
+                                            errors.push(format!("Idea {} (generated) has parents", id));
+                                        }
+                                    }
+                                    "refined" | "crossover" | "mutated" => {
+                                        if !has_parents {
+                                            errors.push(format!("Idea {} ({}) has no parents", id, origin));
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => errors.push(format!("State JSON invalid: {}", e)),
+                }
+            }
+            Err(e) => errors.push(format!("State read error: {}", e)),
+        }
+    } else {
+        errors.push("State: MISSING".to_string());
+    }
 
     // Validate history
-    let history_path = PathBuf::from("runs").join(run_id).join("history.ndjson");
-    let history_content = std::fs::read_to_string(&history_path)?;
-    let event_count = history_content.lines().count();
-    println!("History: OK ({} events)", event_count);
+    let history_path = run_dir.join("history.ndjson");
+    if history_path.exists() {
+        match fs::read_to_string(&history_path) {
+            Ok(content) => {
+                let event_count = content.lines().count();
+                println!("History: OK ({} events)", event_count);
+            }
+            Err(e) => errors.push(format!("History read error: {}", e)),
+        }
+    } else {
+        errors.push("History: MISSING".to_string());
+    }
 
     // Validate final if exists
-    let final_path = PathBuf::from("runs").join(run_id).join("final.json");
+    let final_path = run_dir.join("final.json");
     if final_path.exists() {
-        let final_content = std::fs::read_to_string(&final_path)?;
-        let result: crate::data::FinalResult = serde_json::from_str(&final_content)?;
-        println!("Final: OK (best: {})", result.best.title);
+        match fs::read_to_string(&final_path) {
+            Ok(content) => {
+                match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(result) => {
+                        let title = result.get("best_idea")
+                            .and_then(|b| b.get("title"))
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("?");
+                        println!("Final: OK (best: {})", title);
+                    }
+                    Err(e) => errors.push(format!("Final JSON invalid: {}", e)),
+                }
+            }
+            Err(e) => errors.push(format!("Final read error: {}", e)),
+        }
     } else {
         println!("Final: NOT YET (run in progress)");
     }
 
-    // Validate invariants
-    let mut errors = Vec::new();
-
-    for idea in &state.ideas {
-        // Check origin/parents invariant
-        match idea.origin {
-            crate::data::Origin::Generated => {
-                if !idea.parents.is_empty() {
-                    errors.push(format!("Idea {} (generated) has parents", idea.id));
-                }
-            }
-            crate::data::Origin::Crossover
-            | crate::data::Origin::Mutated
-            | crate::data::Origin::Refined => {
-                if idea.parents.is_empty() {
-                    errors.push(format!(
-                        "Idea {} ({:?}) has no parents",
-                        idea.id, idea.origin
-                    ));
-                }
-            }
-        }
-    }
-
+    // Report invariant errors
     if errors.is_empty() {
         println!("Invariants: OK");
     } else {
-        println!("Invariants: {} errors", errors.len());
-        for err in errors {
+        println!("Errors: {} found", errors.len());
+        for err in &errors {
             println!("  - {}", err);
         }
     }
@@ -318,77 +291,15 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn test_orchestrator_mock_run() {
+    fn test_list_runs_empty_dir() {
         let temp_dir = TempDir::new().unwrap();
-        let config = RunConfig::new(
-            "Generate startup ideas".into(),
-            "mock".into(),
-            2, // Just 2 rounds for quick test
-            6,
-            2,
-            9.5, // High threshold so we don't stop early
-            10,  // High patience
-            temp_dir.path().to_string_lossy().into(),
-        );
-
-        let mut orchestrator = Orchestrator::new(config).unwrap();
-        orchestrator.run().unwrap();
-
-        // Verify final.json was created
-        let final_path = temp_dir
-            .path()
-            .join(orchestrator.state.run_id.to_string())
-            .join("final.json");
-        assert!(final_path.exists());
-
-        // Verify it contains valid JSON with a best idea
-        let content = std::fs::read_to_string(final_path).unwrap();
-        let result: crate::data::FinalResult = serde_json::from_str(&content).unwrap();
-        assert!(!result.best.title.is_empty());
+        let result = list_runs(temp_dir.path().to_str().unwrap());
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn test_orchestrator_stops_on_max_rounds() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = RunConfig::new(
-            "Test".into(),
-            "mock".into(),
-            3,
-            6,
-            2,
-            10.0, // Impossible threshold
-            100,  // Won't stagnate
-            temp_dir.path().to_string_lossy().into(),
-        );
-
-        let mut orchestrator = Orchestrator::new(config).unwrap();
-        orchestrator.run().unwrap();
-
-        assert_eq!(orchestrator.state.iteration, 3);
-    }
-
-    #[test]
-    fn test_orchestrator_creates_all_artifacts() {
-        let temp_dir = TempDir::new().unwrap();
-        let config = RunConfig::new(
-            "Test".into(),
-            "mock".into(),
-            1,
-            4,
-            2,
-            10.0,
-            100,
-            temp_dir.path().to_string_lossy().into(),
-        );
-
-        let mut orchestrator = Orchestrator::new(config).unwrap();
-        orchestrator.run().unwrap();
-
-        let run_dir = temp_dir.path().join(orchestrator.state.run_id.to_string());
-
-        assert!(run_dir.join("config.json").exists());
-        assert!(run_dir.join("state.json").exists());
-        assert!(run_dir.join("history.ndjson").exists());
-        assert!(run_dir.join("final.json").exists());
+    fn test_list_runs_nonexistent_dir() {
+        let result = list_runs("/nonexistent/path");
+        assert!(result.is_ok()); // Should handle gracefully
     }
 }
