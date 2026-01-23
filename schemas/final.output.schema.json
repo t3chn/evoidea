@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "best": {
+      "type": "object",
+      "properties": {
+        "idea_id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "facets": {
+          "type": "object",
+          "properties": {
+            "audience": {
+              "type": "string"
+            },
+            "jtbd": {
+              "type": "string"
+            },
+            "differentiator": {
+              "type": "string"
+            },
+            "monetization": {
+              "type": "string"
+            },
+            "distribution": {
+              "type": "string"
+            },
+            "risks": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "audience",
+            "jtbd",
+            "differentiator",
+            "monetization",
+            "distribution",
+            "risks"
+          ],
+          "additionalProperties": false
+        },
+        "scores": {
+          "type": "object",
+          "properties": {
+            "feasibility": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "speed_to_value": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "differentiation": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "market_size": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "distribution": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "moats": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "risk": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            },
+            "clarity": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 10
+            }
+          },
+          "required": [
+            "feasibility",
+            "speed_to_value",
+            "differentiation",
+            "market_size",
+            "distribution",
+            "moats",
+            "risk",
+            "clarity"
+          ],
+          "additionalProperties": false
+        },
+        "overall_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "why_won": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "idea_id",
+        "title",
+        "summary",
+        "facets",
+        "scores",
+        "overall_score",
+        "why_won"
+      ],
+      "additionalProperties": false
+    },
+    "runners_up": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "idea_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "overall_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10
+          }
+        },
+        "required": [
+          "idea_id",
+          "title",
+          "overall_score"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 5
+    }
+  },
+  "required": [
+    "run_id",
+    "best",
+    "runners_up"
+  ],
+  "additionalProperties": false
+}

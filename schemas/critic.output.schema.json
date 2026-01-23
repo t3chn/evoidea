@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "patches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "scores": {
+            "type": "object",
+            "properties": {
+              "feasibility": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "speed_to_value": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "differentiation": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "market_size": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "distribution": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "moats": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "risk": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "clarity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 10
+              }
+            },
+            "required": [
+              "feasibility",
+              "speed_to_value",
+              "differentiation",
+              "market_size",
+              "distribution",
+              "moats",
+              "risk",
+              "clarity"
+            ],
+            "additionalProperties": false
+          },
+          "overall_score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "judge_notes": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "scores",
+          "overall_score",
+          "judge_notes"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 50
+    }
+  },
+  "required": [
+    "patches"
+  ],
+  "additionalProperties": false
+}

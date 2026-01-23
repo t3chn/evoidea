@@ -40,6 +40,10 @@ Use prek (`uvx prek ...`) with hooks for:
 - repo hygiene (merge conflicts/whitespace/EOF)
 - Rust formatting/linting/tests (for `*.rs`).
 
-## Open Questions (can be tracked as issues)
-- Default scoring weights (all 1.0? invert risk?).
-- Diversity slot heuristic (random from mid-rank vs a simple novelty heuristic).
+## Decisions
+
+**Scoring weights (MVP):** all weights = 1.0; risk inverted via `(10 - risk)` before summing.
+- Rationale: YAGNI, simpler tests, trivial to add config later.
+
+**Diversity slot (MVP):** random from mid-rank (positions 30%-70% by score).
+- Rationale: simplest way to avoid local optima; novelty heuristic can be added later if needed.

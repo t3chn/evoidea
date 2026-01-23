@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "mutation_type": {
+      "type": "string",
+      "enum": [
+        "audience",
+        "monetization",
+        "distribution",
+        "differentiator",
+        "jtbd"
+      ]
+    },
+    "idea": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "facets": {
+          "type": "object",
+          "properties": {
+            "audience": {
+              "type": "string"
+            },
+            "jtbd": {
+              "type": "string"
+            },
+            "differentiator": {
+              "type": "string"
+            },
+            "monetization": {
+              "type": "string"
+            },
+            "distribution": {
+              "type": "string"
+            },
+            "risks": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "audience",
+            "jtbd",
+            "differentiator",
+            "monetization",
+            "distribution",
+            "risks"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "title",
+        "summary",
+        "facets"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "mutation_type",
+    "idea"
+  ],
+  "additionalProperties": false
+}

@@ -1,2 +1,8 @@
 .DS_Store
 .jj/
+
+# Added by cargo
+/target
+
+# Run artifacts (generated at runtime)
+/runs
