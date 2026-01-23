@@ -649,6 +649,135 @@ fn update_elo(preferences: &mut serde_json::Value, winner_id: &str, loser_id: &s
     Ok(())
 }
 
+/// Export preferences from a run to a portable profile
+pub fn profile_export(run_id: &str, output: Option<&str>) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+    let preferences_path = run_dir.join("preferences.json");
+
+    if !preferences_path.exists() {
+        anyhow::bail!("No preferences found for run {}. Run tournament first.", run_id);
+    }
+
+    let preferences: serde_json::Value = serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
+
+    // Extract comparison count and compute derived stats
+    let comparisons = preferences.get("comparisons")
+        .and_then(|c| c.as_array())
+        .map(|c| c.len())
+        .unwrap_or(0);
+
+    let elo_ratings = preferences.get("elo_ratings")
+        .and_then(|e| e.as_object())
+        .map(|e| e.len())
+        .unwrap_or(0);
+
+    // Build portable profile with metadata
+    let profile = serde_json::json!({
+        "version": 1,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "source_run": run_id,
+        "stats": {
+            "comparisons": comparisons,
+            "ideas_rated": elo_ratings
+        },
+        "preferences": preferences
+    });
+
+    let json_output = serde_json::to_string_pretty(&profile)?;
+
+    match output {
+        Some(path) => {
+            fs::write(path, &json_output)?;
+            println!("Profile exported to: {}", path);
+        }
+        None => {
+            println!("{}", json_output);
+        }
+    }
+
+    Ok(())
+}
+
+/// Import a profile into a run
+pub fn profile_import(file: &str, run_id: &str) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+
+    if !run_dir.exists() {
+        anyhow::bail!("Run {} not found", run_id);
+    }
+
+    let profile: serde_json::Value = serde_json::from_str(&fs::read_to_string(file)?)?;
+
+    // Validate profile format
+    let version = profile.get("version")
+        .and_then(|v| v.as_i64())
+        .ok_or_else(|| anyhow::anyhow!("Invalid profile: missing version"))?;
+
+    if version != 1 {
+        anyhow::bail!("Unsupported profile version: {}", version);
+    }
+
+    let preferences = profile.get("preferences")
+        .ok_or_else(|| anyhow::anyhow!("Invalid profile: missing preferences"))?;
+
+    // Write preferences to run
+    let preferences_path = run_dir.join("preferences.json");
+    fs::write(&preferences_path, serde_json::to_string_pretty(preferences)?)?;
+
+    let source_run = profile.get("source_run")
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown");
+
+    println!("Imported profile from {} into {}", source_run, run_id);
+    println!("Preferences written to: {}", preferences_path.display());
+
+    Ok(())
+}
+
+/// Show profile information for a run
+pub fn profile_show(run_id: &str) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+    let preferences_path = run_dir.join("preferences.json");
+
+    if !preferences_path.exists() {
+        println!("No preferences found for run {}", run_id);
+        println!("Run 'evoidea tournament --run-id {}' to generate preferences", run_id);
+        return Ok(());
+    }
+
+    let preferences: serde_json::Value = serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
+
+    let comparisons = preferences.get("comparisons")
+        .and_then(|c| c.as_array())
+        .map(|c| c.len())
+        .unwrap_or(0);
+
+    let elo_ratings = preferences.get("elo_ratings")
+        .and_then(|e| e.as_object());
+
+    println!("=== Profile for {} ===\n", run_id);
+    println!("Comparisons: {}", comparisons);
+
+    if let Some(ratings) = elo_ratings {
+        println!("Ideas rated: {}", ratings.len());
+        println!("\nElo Rankings:");
+
+        let mut ranked: Vec<(&str, f64)> = ratings.iter()
+            .filter_map(|(id, elo)| {
+                elo.as_f64().map(|e| (id.as_str(), e))
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        for (rank, (id, elo)) in ranked.iter().enumerate() {
+            let short_id = if id.len() > 30 { &id[..30] } else { id };
+            println!("  {}. [{:.0}] {}", rank + 1, elo, short_id);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

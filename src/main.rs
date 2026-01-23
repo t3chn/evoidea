@@ -64,6 +64,44 @@ enum Commands {
         #[arg(long)]
         auto: bool,
     },
+
+    /// Manage preference profiles for scoring calibration
+    Profile {
+        #[command(subcommand)]
+        action: ProfileAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ProfileAction {
+    /// Export preferences from a run to a portable profile
+    Export {
+        /// Run ID to export from
+        #[arg(long)]
+        run_id: String,
+
+        /// Output file (default: stdout)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+
+    /// Import a profile into a run
+    Import {
+        /// Profile file to import
+        #[arg(long, short)]
+        file: String,
+
+        /// Run ID to import into
+        #[arg(long)]
+        run_id: String,
+    },
+
+    /// Show current profile information
+    Show {
+        /// Run ID to show profile for
+        #[arg(long)]
+        run_id: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -94,6 +132,20 @@ fn main() -> Result<()> {
             tracing::info!(run_id = %run_id, auto = %auto, "Running tournament");
             orchestrator::tournament(&run_id, auto)?;
         }
+        Commands::Profile { action } => match action {
+            ProfileAction::Export { run_id, output } => {
+                tracing::info!(run_id = %run_id, "Exporting profile");
+                orchestrator::profile_export(&run_id, output.as_deref())?;
+            }
+            ProfileAction::Import { file, run_id } => {
+                tracing::info!(run_id = %run_id, file = %file, "Importing profile");
+                orchestrator::profile_import(&file, &run_id)?;
+            }
+            ProfileAction::Show { run_id } => {
+                tracing::info!(run_id = %run_id, "Showing profile");
+                orchestrator::profile_show(&run_id)?;
+            }
+        },
     }
 
     Ok(())
