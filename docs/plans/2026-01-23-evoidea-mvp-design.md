@@ -1,45 +1,45 @@
-# evoidea — MVP дизайн (IDEATION-only)
+# evoidea — MVP Design (IDEATION-only)
 
-Дата: 2026-01-23
+Date: 2026-01-23
 
-## Контекст
-В репозитории лежит пакет спецификаций `evoidea_codex_bundle_md/` (spec/архитектура/pipeline/test plan + skill).
-Цель MVP — материализовать это в рабочий Rust CLI `evoidea` и Codex skill `evo-ideator`.
+## Context
+This repository currently contains a spec bundle in `evoidea_codex_bundle_md/` (spec/architecture/pipeline/test plan + skill).
+The MVP goal is to materialize it into a working Rust CLI `evoidea` and a Codex skill `evo-ideator`.
 
-## Цель / не-цели
-**Цель:** локальный, воспроизводимый CLI, который по `--prompt` делает меметический цикл (generate → score → select → crossover/mutate → refine → stop) и возвращает **ровно 1** лучшую идею (MODE=IDEATION), сохраняя артефакты запуска в `runs/<run_id>/`.
+## Goals / Non-goals
+**Goal:** a local, reproducible CLI that takes `--prompt`, runs a memetic loop (generate -> score -> select -> crossover/mutate -> refine -> stop), returns **exactly one** best idea (MODE=IDEATION), and writes run artifacts into `runs/<run_id>/`.
 
-**Не-цели (для MVP):**
-- MODE=PLANNING (отдельная команда/режим позже).
-- SQLite/Turso storage (feature-флаг позже).
-- “Качество идеи” как eval-метрика (в MVP проверяем структуру/детерминизм/инварианты).
+**Non-goals (for MVP):**
+- MODE=PLANNING (separate command/mode later).
+- SQLite/Turso storage (feature flag later).
+- \"Idea quality\" as an eval metric (MVP only validates structure/determinism/invariants).
 
-## Варианты реализации (выбор)
-1) **Минимальный цикл (рекомендовано для старта):** реализовать каркас pipeline + FileStorage + MockLlmProvider, но включать фазы по конфигу; начать с Generate/Score/Select/Refine/Stop и затем добавлять Crossover/Mutation.
-Плюсы: быстрее выйти на зелёные интеграционные тесты и артефакты запуска.
+## Implementation Options (Choice)
+1) **Minimal loop (recommended first):** implement pipeline skeleton + FileStorage + MockLlmProvider, with phases enabled via config; start with Generate/Score/Select/Refine/Stop and add Crossover/Mutation later.
+Pros: fastest path to green integration tests and stable artifacts.
 
-2) Полный цикл сразу (все фазы).
-Плюсы: меньше “переделок” после MVP, минусы: сложнее отлаживать без базовой инфраструктуры тестов/стора.
+2) Full loop from day one (all phases).
+Pros: fewer follow-up iterations, cons: harder to debug without baseline infra (tests + storage) in place.
 
-Для MVP берём (1): ранняя “вертикаль” с детерминизмом и артефактами важнее полноты.
+For MVP we pick (1): a deterministic vertical slice with artifacts is more important than completeness.
 
-## Архитектура (как в спеках, с MVP-упрощениями)
-- `Orchestrator` держит config/run_id, инициирует storage, собирает pipeline, крутит итерации.
-- `Pipeline` — список `Phase`, каждая `run(state, ctx) -> state` и пишет события в `history.ndjson`.
-- `Storage` (MVP): `FileStorage` под `runs/<run_id>/` (config/state/history/final).
-- `LlmProvider` (MVP): `MockLlmProvider` (fixtures), интерфейс заранее совместим с `CodexExecProvider`.
+## Architecture (per specs, with MVP simplifications)
+- `Orchestrator` owns config/run_id, initializes storage, builds the pipeline, and drives iterations.
+- `Pipeline` is a list of `Phase`; each `run(state, ctx) -> state` and writes events to `history.ndjson`.
+- `Storage` (MVP): `FileStorage` under `runs/<run_id>/` (config/state/history/final).
+- `LlmProvider` (MVP): `MockLlmProvider` (fixtures), interface remains compatible with `CodexExecProvider`.
 - `Scoring/Selection`: weighted sum + elite + diversity slot; stop conditions (threshold/stagnation/max_rounds).
 
-## Тестирование (TDD-first)
-- Unit: selection, stop conditions, инварианты origin/parents/status, JSON round-trip.
-- Integration (MockLlmProvider): прогон 2–4 итераций, проверка best_idea_id, артефактов, `final.json` по схеме.
-- Smoke (опционально): `--mode codex` без падений и с созданием файлов.
+## Testing (TDD-first)
+- Unit: selection, stop conditions, origin/parents/status invariants, JSON round-trip.
+- Integration (MockLlmProvider): 2-4 iterations, validate best_idea_id, artifacts, `final.json` structure.
+- Smoke (optional): `--mode codex` does not crash and creates files.
 
-## Инструменты качества
-Включаем prek (`uvx prek ...`) с хуками для:
-- базовой гигиены репо (конфликты/whitespace/конечные переводы строк)
-- Rust форматирования/линтинга/тестов (по файлам `*.rs`).
+## Quality Tooling
+Use prek (`uvx prek ...`) with hooks for:
+- repo hygiene (merge conflicts/whitespace/EOF)
+- Rust formatting/linting/tests (for `*.rs`).
 
-## Открытые решения (можно закодировать как отдельные задачи)
-- Конкретные веса scoring (по умолчанию = 1.0, кроме risk = -1.0?).
-- Алгоритм diversity slot (рандом из середины ранга vs простая novelty-эвристика).
+## Open Questions (can be tracked as issues)
+- Default scoring weights (all 1.0? invert risk?).
+- Diversity slot heuristic (random from mid-rank vs a simple novelty heuristic).

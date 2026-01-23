@@ -1,28 +1,28 @@
-# non_md — файлы, которые нужно материализовать
+# non_md — files that must be materialized
 
-Этот пакет по запросу содержит только `.md` файлы.
-Но проекту понадобятся настоящие `.json/.sh/.csv/.mjs`.
+This bundle is stored as `.md` files for portability.
+The actual project needs real `.json/.sh/.csv/.mjs` files.
 
-## Что сделать
-1) Создай в целевом репозитории директории:
+## What to do
+1) Create these directories in the target repository:
 - `schemas/`
 - `.codex/skills/evo-ideator/scripts/`
 - `evals/`
 
-2) Материализуй файлы:
+2) Materialize the files:
 
 ### Schemas
-См. `non_md/schemas/SCHEMAS.json.md` — там несколько блоков с `Target path:`.
+See `non_md/schemas/SCHEMAS.json.md` — it contains multiple blocks with `Target path:`.
 
-### Скрипт skill
-Создай файл:
+### Skill script
+Create:
 - `.codex/skills/evo-ideator/scripts/run_evoidea.sh`
-с содержимым из `non_md/codex_skill_scripts/run_evoidea.sh.md`
+with contents from `non_md/codex_skill_scripts/run_evoidea.sh.md`
 
-Не забудь:
+Do not forget:
 - `chmod +x .codex/skills/evo-ideator/scripts/run_evoidea.sh`
 
-### Evals (опционально)
-Создай:
-- `evals/evo-ideator.prompts.csv` из `non_md/evals/evo-ideator.prompts.csv.md`
-- `evals/run-evals.mjs` из `non_md/evals/run-evals.mjs.md`
+### Evals (optional)
+Create:
+- `evals/evo-ideator.prompts.csv` from `non_md/evals/evo-ideator.prompts.csv.md`
+- `evals/run-evals.mjs` from `non_md/evals/run-evals.mjs.md`

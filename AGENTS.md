@@ -67,7 +67,7 @@ Done when: <1–3 bullets>
 - Run: `uvx prek run --all-files`
 - Install hook: `uvx prek install`
 - Validate config: `uvx prek validate-config .pre-commit-config.yaml`
-- Policy: no Cyrillic outside translation files (e.g. `locales/`, `i18n/`, `l10n/`, `translations/`).
+- Policy: no Cyrillic in repo (until we add explicit i18n exceptions).
 
 ## Landing the Plane (Session Completion)
 

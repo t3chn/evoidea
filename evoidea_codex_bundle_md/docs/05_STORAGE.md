@@ -1,7 +1,7 @@
-# 05_STORAGE — файлы, SQLite, (опц.) Turso/libSQL
+# 05_STORAGE — files, SQLite, (optional) Turso/libSQL
 
 ## 1) FileStorage (default)
-Структура:
+Layout:
 runs/<run_id>/
   config.json
   state.json
@@ -9,24 +9,24 @@ runs/<run_id>/
   final.json
   final.md (optional)
 
-Плюсы:
-- минимально
-- легко дебажить
-- переносимо
+Pros:
+- minimal
+- easy to debug
+- portable
 
 ## 2) SqliteStorage (feature flag)
-Использовать когда:
-- много запусков
-- нужен поиск по истории
-- нужна дедупликация/аналитика
+Use when:
+- many runs
+- you need history search
+- you need dedup/analytics
 
-Таблицы (минимум):
+Tables (minimum):
 - runs(run_id TEXT PK, created_at, config_json)
 - ideas(id TEXT PK, run_id, gen, origin, parents_json, title, summary, facets_json, status)
 - scores(idea_id, criterion, value)
 - events(run_id, ts, iteration, type, payload_json)
 - finals(run_id, final_json)
 
-## 3) Turso/libSQL (будущее)
-Если когда-нибудь понадобится синхронизация/репликация, можно заменить backend.
-Но в MVP не реализуем.
+## 3) Turso/libSQL (future)
+If you ever need sync/replication, you can swap the backend.
+Not part of the MVP.

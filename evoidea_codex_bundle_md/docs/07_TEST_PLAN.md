@@ -1,35 +1,35 @@
-# 07_TEST_PLAN — как проверить “работает как задумано”
+# 07_TEST_PLAN — how to verify behavior
 
-## 1) Unit tests (без LLM)
+## 1) Unit tests (no LLM)
 - selection:
-  - elite_count сохраняется
-  - population ограничивается
-  - diversity slot добавляет не только топ
+  - elite_count preserved
+  - population bounded
+  - diversity slot is not top-only
 - stop conditions:
   - threshold stop
   - stagnation stop
   - max_rounds stop
 - data invariants:
-  - parents/origin правила
+  - parents/origin rules
   - status filtering
 - serialization:
   - state.json round-trip
 
 ## 2) Integration tests (MockLlmProvider)
-Сценарий:
-- generator -> фиксированные идеи
-- critic -> фиксированные score
-- merger/mutator/refiner -> фиксы
+Scenario:
+- generator -> fixed ideas
+- critic -> fixed scores
+- merger/mutator/refiner -> fixed outputs
 
-Проверки:
-- после N итераций выбран ожидаемый best_idea_id
-- создан final.json по схеме
-- history.ndjson имеет события по шагам
+Checks:
+- after N iterations, best_idea_id is the expected one
+- final.json is created and matches the expected structure
+- history.ndjson contains step events
 
-## 3) Smoke test (опционально, real codex)
+## 3) Smoke test (optional, real codex)
 `evoidea run --mode codex --prompt "..."`
-Проверка: не падает, создаёт файлы.
+Check: does not crash and creates files.
 
 ## 4) Regression suite
-- набор fixture сценариев easy/medium/hard
-- проверка, что структура output не ломается
+- a set of fixture scenarios: easy/medium/hard
+- verify that output structure does not regress

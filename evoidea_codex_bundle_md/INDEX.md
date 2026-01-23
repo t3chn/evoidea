@@ -1,13 +1,13 @@
-# Пакет документов для реализации evoidea (Rust) + Codex skill
+# Document bundle for implementing evoidea (Rust) + Codex skill
 
-## Что внутри
-- `AGENTS.md` — инструкции для Codex CLI-агента (как реализовать)
-- `docs/` — подробная спецификация, архитектура, pipeline, CLI, тест-план
+## Contents
+- `AGENTS.md` — implementation instructions for a Codex CLI agent
+- `docs/` — detailed spec, architecture, pipeline, CLI, and test plan
 - `.codex/skills/evo-ideator/` — skill (markdown)
-- `non_md/` — дополнительные файлы в .md (их нужно материализовать в реальные расширения)
+- `non_md/` — extra files stored as `.md` that must be materialized into real extensions
 
-## Как пользоваться
-1) Распакуй zip в новый git-репозиторий.
-2) Дай Codex CLI-агенту инструкцию:
-   - "Реализуй проект по AGENTS.md и docs/*.md; доведи до cargo test."
-3) После того как Rust код готов — материализуй файлы из `non_md/README.md`.
+## How to use
+1) Unpack this bundle into a new git repository.
+2) Give a Codex CLI agent the instruction:
+   - "Implement the project using AGENTS.md and docs/*.md; get to green cargo test."
+3) Once the Rust code is ready, materialize files listed in `non_md/README.md`.

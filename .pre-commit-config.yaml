@@ -14,11 +14,10 @@ repos:
   - repo: local
     hooks:
       - id: no-cyrillic
-        name: forbid Cyrillic characters (except translations)
+        name: forbid Cyrillic characters
         entry: bash scripts/check_no_cyrillic.sh
         language: system
         types: [text]
-        exclude: ^(docs/|evoidea_codex_bundle_md/|\.beads/) # docs/spec bundle/issues may contain non-English text
 
       - id: cargo-fmt
         name: cargo fmt

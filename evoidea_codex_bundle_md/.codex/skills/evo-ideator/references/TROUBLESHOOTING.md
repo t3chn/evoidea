@@ -1,12 +1,12 @@
 # TROUBLESHOOTING
 
-## Скилл не триггерится
-- Вызови явно: `Use the $evo-ideator skill: ...`
+## Skill does not trigger
+- Call it explicitly: `Use the $evo-ideator skill: ...`
 
-## Слишком много воды
-- Напомни: "коротко, практично, 1 лучшая идея"
+## Too verbose
+- Remind: "short, practical, 1 best idea"
 
-## Зацикливание
-- Уменьши итерации
-- Увеличь порог остановки
-- Отключи ресёрч
+## Looping / takes too long
+- Reduce iterations
+- Increase stop threshold
+- Disable research

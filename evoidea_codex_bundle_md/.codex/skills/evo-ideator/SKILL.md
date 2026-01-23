@@ -5,36 +5,36 @@ metadata:
   short-description: Memetic idea evolver (best-of loop)
 ---
 
-## Когда использовать
-Используй этот скилл, когда пользователь просит:
-- придумать проект / продукт / стратегию
-- найти решение задачи
-- сгенерировать варианты и выбрать лучший итеративно
+## When to use
+Use this skill when the user asks to:
+- invent a project / product / strategy
+- solve a problem
+- generate options and pick the best iteratively
 
-## Что делает
-Запускает итеративный меметический цикл и возвращает:
-- ОДНУ лучшую идею (кратко и практично) + обоснование по score
+## What it does
+Runs an iterative memetic loop and returns:
+- exactly ONE best idea (concise and practical) plus a score-based rationale
 
 ## Workflow
-1) Если в репо есть бинарник `evoidea`:
-   - Запусти материализованный скрипт:
-     - см. `non_md/codex_skill_scripts/run_evoidea.sh.md`
-2) Если бинарника нет:
-   - Выполни instruction-only loop:
+1) If the repo has the `evoidea` binary:
+   - Run the materialized script:
+     - see `non_md/codex_skill_scripts/run_evoidea.sh.md`
+2) If the binary is missing:
+   - Do an instruction-only loop:
      - Generate 8–12 ideas
      - Score with rubric
      - Select top + diversity
      - Crossover/mutate
      - Refine top 2–3
      - Stop after 3–6 rounds or earlier if clear winner
-   - Сохрани артефакты в `runs/<run_id>/`
+   - Save artifacts under `runs/<run_id>/`
 
-## Формат ответа пользователю (IDEATION)
-- Название
-- 5–10 буллетов: проблема, аудитория, решение, монетизация, дистрибуция, риски, почему выиграло
-Без подробного плана реализации, если пользователь не просит.
+## User-facing response format (IDEATION)
+- Title
+- 5–10 bullets: problem, audience, solution, monetization, distribution, risks, why it won
+No detailed implementation plan unless the user explicitly asks for it.
 
-## Ссылки
+## References
 - `references/RUNBOOK.md`
 - `references/OUTPUT_FORMAT.md`
 - `references/TROUBLESHOOTING.md`

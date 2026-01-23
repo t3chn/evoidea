@@ -1,53 +1,53 @@
-# 01_ARCHITECTURE — модули и расширяемость
+# 01_ARCHITECTURE — modules and extensibility
 
-## 1. Схема
+## 1. Diagram
 [CLI] -> [Orchestrator] -> [Pipeline]
                       -> [Storage]
                       -> [LlmProvider]
                       -> [Scoring/Selection]
 
-## 2. Ключевые абстракции
+## 2. Key abstractions
 
-### Phase (плагин)
-Каждая фаза реализует:
+### Phase (plugin)
+Each phase implements:
 - `name() -> &str`
 - `run(state, ctx) -> state`
 
-Pipeline — список фаз из config.
+Pipeline is a list of phases from config.
 
 ### LlmProvider
-Трейт:
+Trait:
 - `generate_json(task: LlmTask, schema_path: &Path) -> serde_json::Value`
 
-Реализации:
+Implementations:
 - `MockLlmProvider` (fixtures)
 - `CodexExecProvider` (spawn `codex exec ... --output-schema <schema.json>`)
-- `CommandProvider` (любой внешний CLI — при необходимости)
+- `CommandProvider` (generic external CLI, if needed)
 
 ### Storage
-Трейт:
+Trait:
 - `init_run(config) -> run_id`
 - `load_state / save_state`
 - `append_event`
 - `save_final`
 
-Реализации:
+Implementations:
 - `FileStorage` (default)
 - `SqliteStorage` (feature flag)
 
-## 3. Расширение “без переписывания”
-Добавить фазу = новый модуль + регистрация в конфиге pipeline.
-Добавить провайдер = реализация LlmProvider.
-Добавить хранилище = реализация Storage.
+## 3. Extending \"without rewrites\"
+Add a phase = new module + register in the pipeline config.
+Add a provider = implement LlmProvider.
+Add storage = implement Storage.
 
-## 4. Контекст и сокращение
-В LLM отправляем компактный контекст:
-- только top-K идей + новые
-- только нужные поля
-- (опционально) TOON для uniform arrays
+## 4. Context and compression
+Send a compact context to the LLM:
+- only top-K ideas + new candidates
+- only necessary fields
+- (optional) TOON for uniform arrays
 
-Канон хранится в JSON.
+Canonical data is stored in JSON.
 
-## 5. Логи и история
-- `history.ndjson` как append-only событийный лог по итерациям
-- `tracing` span на run_id и iteration
+## 5. Logs and history
+- `history.ndjson` as an append-only per-iteration event log
+- `tracing` spans keyed by run_id and iteration

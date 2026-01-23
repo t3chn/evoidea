@@ -1,30 +1,30 @@
-# 09_IMPLEMENTATION_TASKS — пошаговый план реализации (для агента)
+# 09_IMPLEMENTATION_TASKS — implementation checklist (for an agent)
 
-## Шаг 0: Scaffold
+## Step 0: Scaffold
 - `cargo new evoidea`
 - deps: serde, serde_json, anyhow, tracing, tracing-subscriber, clap
 - fmt/clippy
 
-## Шаг 1: Data model
+## Step 1: Data model
 - structs: RunConfig, Idea, Facets, Scores, State, Event, FinalResult
 - serde derives
-- чтение/запись JSON артефактов
+- read/write JSON artifacts
 
-## Шаг 2: Storage
+## Step 2: Storage
 - FileStorage: init_run/save/load/append_event/save_final
-- SqliteStorage (feature flag) — по желанию
+- SqliteStorage (feature flag) — optional
 
-## Шаг 3: Selection/Scoring
+## Step 3: Selection/Scoring
 - weighted sum
 - select elite + diversity
 - stop conditions
 
-## Шаг 4: LlmProvider
+## Step 4: LlmProvider
 - MockLlmProvider (fixtures)
 - CodexExecProvider: spawn `codex exec --output-schema <schema> -o <tmp>`
-- CommandProvider: generic exec (опционально)
+- CommandProvider: generic exec (optional)
 
-## Шаг 5: Phases
+## Step 5: Phases
 - GeneratePhase
 - CriticPhase
 - SelectPhase
@@ -33,19 +33,19 @@
 - RefinePhase
 - FinalPhase
 
-## Шаг 6: CLI
+## Step 6: CLI
 - run/resume/show/validate/export
 
-## Шаг 7: Schemas
-- создать `schemas/*.json` по `non_md/schemas/*.json.md`
+## Step 7: Schemas
+- create `schemas/*.json` from `non_md/schemas/*.json.md`
 
-## Шаг 8: Tests
+## Step 8: Tests
 - unit + integration (mock)
 - golden fixtures
 
-## Шаг 9: Skill
-- `.codex/skills/evo-ideator/SKILL.md` и references
-- материализовать `run_evoidea.sh` из `non_md/codex_skill_scripts/*.md`
+## Step 9: Skill
+- `.codex/skills/evo-ideator/SKILL.md` and references
+- materialize `run_evoidea.sh` from `non_md/codex_skill_scripts/*.md`
 
-## Шаг 10: Evals harness (optional)
-- материализовать файлы из `non_md/evals/*.md`
+## Step 10: Evals harness (optional)
+- materialize files from `non_md/evals/*.md`

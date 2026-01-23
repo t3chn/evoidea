@@ -1,16 +1,16 @@
-# RUNBOOK — как пользоваться skill
+# RUNBOOK — how to use the skill
 
-## Быстрый вызов
-Пример:
-- `Use the $evo-ideator skill: придумай AI-проект с быстрым выходом на $10k/мес, без плана, только идея`
+## Quick invocation
+Example:
+- `Use the $evo-ideator skill: invent an AI product that can reach $10k/mo quickly; no plan, idea only`
 
-## Если есть бинарник evoidea
-Скилл должен запускать `run_evoidea.sh` (материализуй из `non_md/`).
+## If the evoidea binary exists
+The skill should run `run_evoidea.sh` (materialize it from `non_md/`).
 
-## Если бинарника нет
-Скилл выполняет instruction-only loop и всё равно пишет артефакты.
+## If the binary is missing
+The skill performs an instruction-only loop and still writes artifacts.
 
-## Параметры (как просить текстом)
-- "итераций 6, популяция 12"
-- "с ресёрчем"
-- "без плана, только лучшая идея"
+## Parameters (how to ask in plain text)
+- "6 iterations, population 12"
+- "with research"
+- "no plan, best idea only"

@@ -1,13 +1,13 @@
-# Материализация схем JSON (Structured Outputs)
+# Materializing JSON schemas (Structured Outputs)
 
-Эти файлы нужны, чтобы вызывать `codex exec --output-schema <schema.json>` и получать строгий JSON.
+These files are required to call `codex exec --output-schema <schema.json>` and receive strict JSON.
 
-## Как использовать
-1) Создай папку `schemas/` в целевом репозитории.
-2) Для каждого блока ниже создай файл по указанному `Target path`, скопируй содержимое JSON (без комментариев).
+## How to use
+1) Create a `schemas/` directory in the target repository.
+2) For each block below, create a file at the given `Target path` and copy the JSON content (without comments).
 
-Важно:
-- Для Structured Outputs все объекты должны иметь `"additionalProperties": false`.
+Important:
+- For Structured Outputs, all object schemas must set `"additionalProperties": false`.
 
 
 ## Target path: `schemas/generator.output.schema.json`

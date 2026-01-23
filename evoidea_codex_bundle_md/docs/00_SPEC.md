@@ -1,22 +1,22 @@
-# 00_SPEC — требования и границы
+# 00_SPEC — requirements and boundaries
 
-## 1. Что строим
-CLI-инструмент на Rust + Codex skill. Инструмент реализует “меметический” цикл:
-генерация → оценка → отбор → скрещивание → мутация → улучшение → повтор.
+## 1. What we are building
+A Rust CLI tool plus a Codex skill. The tool implements a \"memetic\" loop:
+generate -> score -> select -> crossover -> mutate -> refine -> repeat.
 
-## 2. Вход
-- `prompt` (строка): задача пользователя (идея проекта, решение проблемы, стратегия и т.п.)
-- Опциональные ограничения:
-  - ниша/рынок
-  - срок до MVP
-  - требование по доходу (например $10k/мес)
-  - ограничения по стеку/ресурсам
-  - язык ответа (по умолчанию ru)
+## 2. Input
+- `prompt` (string): user task (project idea, problem solution, strategy, etc.)
+- Optional constraints:
+  - niche/market
+  - time-to-MVP
+  - revenue target (e.g. $10k/mo)
+  - stack/resource constraints
+  - output language (default: ru in the original spec; repository policy may override)
 
-## 3. Выход (MODE=IDEATION)
-Одна лучшая идея:
+## 3. Output (MODE=IDEATION)
+One best idea:
 - `title`
-- `summary` (1–3 абзаца)
+- `summary` (1-3 paragraphs)
 - `facets`:
   - `audience`
   - `jtbd`
@@ -24,46 +24,46 @@ CLI-инструмент на Rust + Codex skill. Инструмент реал�
   - `monetization`
   - `distribution`
   - `risks`
-- `scores` по критериям + `overall_score`
-- `why_won`: 2–6 причин
+- `scores` per criterion + `overall_score`
+- `why_won`: 2-6 reasons
 
-Важно: IDEATION **не** должен выдавать подробный план реализации, если пользователь не просил.
+Important: IDEATION must **not** produce a detailed implementation plan unless the user asked for it.
 
-## 4. Выход (MODE=PLANNING)
-Отдельная команда/режим (можно позже):
-- план реализации выбранной идеи (этапы, задачи, метрики, GTM)
+## 4. Output (MODE=PLANNING)
+A separate command/mode (can be added later):
+- implementation plan for the chosen idea (phases, tasks, metrics, GTM)
 
-## 5. Артефакты запуска
-Каждый запуск создаёт `runs/<run_id>/`:
-- `config.json` — применённые параметры
-- `state.json` — текущее состояние популяции
-- `history.ndjson` — события по итерациям (оценки/отбор/мутации)
-- `final.json` — финальный результат
-- `final.md` — (опционально) красивый markdown-отчёт
+## 5. Run artifacts
+Each run creates `runs/<run_id>/`:
+- `config.json` — applied parameters
+- `state.json` — current population state
+- `history.ndjson` — per-iteration events (scoring/selection/mutations)
+- `final.json` — final result
+- `final.md` — (optional) human-friendly markdown report
 
-## 6. Алгоритм (коротко)
-Итерация i:
-1) (опц.) research: собрать факты/ссылки по нише
-2) generate: добавить идеи
-3) critic: оценить (мультикритерий)
-4) select: элита + разнообразие
-5) crossover: скрестить топ-идеи
-6) mutate: вариации
-7) refine: улучшить top-K
-8) stop: если достигнут критерий
+## 6. Algorithm (high level)
+Iteration i:
+1) (optional) research: collect facts/links about the niche
+2) generate: add ideas
+3) critic: score ideas (multi-criteria)
+4) select: elite + diversity
+5) crossover: combine top ideas
+6) mutate: create variations
+7) refine: improve top-K
+8) stop: if a stop condition is met
 
-## 7. Критерии остановки
+## 7. Stop conditions
 - `best_score >= threshold`
-- или нет улучшения `best_score` N итераций (`stagnation_patience`)
-- или достигнут `max_rounds`
+- or no improvement for N iterations (`stagnation_patience`)
+- or reached `max_rounds`
 
-## 8. Нефункциональные требования
-- Локально.
-- Тестируемо и воспроизводимо (через mock provider).
-- Минимальные зависимости.
-- Расширяемость: новые фазы добавляются без переписывания ядра.
+## 8. Non-functional requirements
+- Local-first.
+- Testable and reproducible (via a mock provider).
+- Minimal dependencies.
+- Extensible: new phases can be added without rewriting the core.
 
 ## 9. Definition of Done
-- `cargo test` green
-- mock run создаёт артефакты и корректный `final.json`
-- skill присутствует
+- `cargo test` is green
+- a mock run writes artifacts and a valid `final.json`
+- the skill exists

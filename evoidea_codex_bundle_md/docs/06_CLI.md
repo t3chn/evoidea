@@ -1,4 +1,4 @@
-# 06_CLI — команды и флаги
+# 06_CLI — commands and flags
 
 ## run
 ```bash
@@ -37,5 +37,5 @@ evoidea validate --run-id <uuid>
 evoidea export --run-id <uuid> --format md
 ```
 
-## Замечание про Codex CLI
-`codex exec` обычно требует git-репозиторий; при необходимости используй `--skip-git-repo-check`.
+## Note about Codex CLI
+`codex exec` typically requires a git repository; use `--skip-git-repo-check` if needed.

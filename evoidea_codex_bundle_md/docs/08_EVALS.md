@@ -1,17 +1,17 @@
-# 08_EVALS — e2e проверки через `codex exec --json` (опционально)
+# 08_EVALS — e2e checks via `codex exec --json` (optional)
 
-## Идея
-Проверяем не “красоту идеи”, а:
-- что skill триггерится
-- что создаются артефакты
-- что соблюдается структура output
-- что цикл останавливается по правилам
+## Idea
+We do not judge \"idea quality\". We verify:
+- the skill triggers
+- artifacts are created
+- output structure is respected
+- the loop stops by the rules
 
-## Датасет
-`evals/evo-ideator.prompts.csv` (см. `non_md/evals/*.md`)
+## Dataset
+`evals/evo-ideator.prompts.csv` (see `non_md/evals/*.md`)
 
-## Раннер
-`evals/run-evals.mjs` (см. `non_md/evals/*.md`)
+## Runner
+`evals/run-evals.mjs` (see `non_md/evals/*.md`)
 
-## Замечание
-`codex exec --json` печатает newline-delimited JSON events.
+## Note
+`codex exec --json` prints newline-delimited JSON events.

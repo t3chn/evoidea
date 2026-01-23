@@ -1,12 +1,12 @@
-# 02_DATA_MODEL — структуры, инварианты, схемы
+# 02_DATA_MODEL — structs, invariants, schemas
 
-## 1) Основные сущности
+## 1) Core entities
 
 ### RunConfig
 - `run_id` (uuid)
 - `mode`: mock|codex|command
 - `prompt`: string
-- `language`: "ru" default
+- `language`: default "ru" in the original spec (repo policy may override)
 - `max_rounds`: u32
 - `population_size`: u32
 - `elite_count`: u32
@@ -16,7 +16,7 @@
 - `stagnation_patience`: u32
 - `score_threshold`: f32
 - `search_enabled`: bool
-- `scoring_weights`: объект весов по критериям
+- `scoring_weights`: weights per criterion
 
 ### Idea
 - `id`: uuid
@@ -25,14 +25,14 @@
 - `parents`: [uuid]
 - `title`: string
 - `summary`: string
-- `facets` (все строки):
+- `facets` (all strings):
   - `audience`
   - `jtbd`
   - `differentiator`
   - `monetization`
   - `distribution`
   - `risks`
-- `scores`: объект критериев (0..10)
+- `scores`: per-criterion scores (0..10)
 - `overall_score`: number|null
 - `judge_notes`: string|null
 - `status`: active|archived
@@ -49,18 +49,18 @@
 - `ts`
 - `iteration`
 - `type`: generated|scored|selected|crossover|mutated|refined|stopped
-- `payload`: object (минимум)
+- `payload`: object (minimal)
 
-## 2) Инварианты
-- `Idea.id` уникален.
-- `parents` пуст для generated; не пуст для crossover/mutated/refined.
-- status=archived идеи не участвуют в отборе.
-- overall_score вычисляется только после scoring.
+## 2) Invariants
+- `Idea.id` is unique.
+- `parents` is empty for generated; non-empty for crossover/mutated/refined.
+- status=archived ideas do not participate in selection.
+- overall_score is computed only after scoring.
 
-## 3) JSON Schema для Structured Outputs (Codex)
-Схемы для LLM задач лежат в `non_md/schemas/*.json.md`.
-После материализации они должны оказаться в `schemas/*.json` и использоваться с:
+## 3) JSON Schema for Structured Outputs (Codex)
+Schemas for LLM tasks live in `non_md/schemas/*.json.md`.
+After materialization they should exist as real files in `schemas/*.json` and be used with:
 `codex exec --output-schema ./schemas/<name>.json ...`
 
-Важно:
-- для объектов всегда ставить `additionalProperties: false`.
+Important:
+- for objects always set `additionalProperties: false`.

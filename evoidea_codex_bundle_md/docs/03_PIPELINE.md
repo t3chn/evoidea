@@ -1,56 +1,56 @@
-# 03_PIPELINE — точный алгоритм по шагам
+# 03_PIPELINE — step-by-step algorithm
 
-## Итерация i
+## Iteration i
 
-### Шаг 0: PrepareContext
-- собрать top-K идей (active)
-- сформировать rubric и constraints
+### Step 0: PrepareContext
+- gather top-K active ideas
+- assemble rubric and constraints
 
-### Шаг 1: Research (optional)
-Если включен `search_enabled`, вызвать research-задачу:
-- собрать 5–15 фактов/ссылок/наблюдений по теме
-- сохранить в `state` (например, `state.notes.research` или отдельный файл)
+### Step 1: Research (optional)
+If `search_enabled` is on, run a research task:
+- collect 5-15 facts/links/observations about the topic
+- store them in `state` (e.g. `state.notes.research`) or in a separate file
 
-### Шаг 2: Generate
-- создать N новых идей (до population_size)
-- у каждой идеи заполнить facets
+### Step 2: Generate
+- create N new ideas (up to population_size)
+- fill facets for each idea
 
-### Шаг 3: Critic/Score
-- оценить идеи по критериям 0..10
-- вернуть judge_notes
-- вычислить overall_score как взвешенную сумму (в коде)
+### Step 3: Critic/Score
+- score ideas on criteria 0..10
+- return judge_notes
+- compute overall_score as a weighted sum (in code)
 
-Критерии по умолчанию:
+Default criteria:
 - feasibility
 - speed_to_value
 - differentiation
 - market_size
 - distribution
 - moats
-- risk (инвертируется: выше риск => ниже вклад)
+- risk (inverted: higher risk => lower contribution)
 - clarity
 
-### Шаг 4: Select
-- элита: top elite_count по overall_score
+### Step 4: Select
+- elite: top elite_count by overall_score
 - diversity slots:
-  - random из середины ранга (или упрощенная novelty по токенам)
-- обрезать до population_size
+  - random from mid-rank (or a simplified novelty heuristic)
+- trim to population_size
 
-### Шаг 5: Crossover
-- выбрать пары из top-M
-- мерджер делает 1 новую идею на пару
-- добавить crossover_count идей
+### Step 5: Crossover
+- pick pairs from top-M
+- merger creates 1 new idea per pair
+- add crossover_count ideas
 
-### Шаг 6: Mutation
-- выбрать идеи (top + random)
-- изменить ровно 1 аспект
-- добавить mutation_count идей
+### Step 6: Mutation
+- pick ideas (top + random)
+- change exactly 1 facet/aspect
+- add mutation_count ideas
 
-### Шаг 7: Refine
-- взять top-K
-- улучшить по judge_notes (конкретика, устранение рисков)
+### Step 7: Refine
+- take top-K
+- improve based on judge_notes (more specific, mitigate risks)
 
-### Шаг 8: Stop conditions
+### Step 8: Stop conditions
 - best_score >= threshold
 - stagnation_counter >= patience
 - iteration >= max_rounds
