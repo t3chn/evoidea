@@ -196,6 +196,22 @@ WEAKEST AREAS: {list 2-3 lowest scoring criteria}
 
 BENCHMARK - Current best idea scores {best_score}/10
 
+{IF constraints exist, add this block:}
+CRITICAL CONSTRAINT GUARDRAILS:
+Your refinement MUST still satisfy these original constraints:
+- Timeline: {timeline_weeks} weeks max to build
+- Solo developer: {solo_dev ? "Yes, must be buildable alone" : "Team OK"}
+- Forbidden: {forbidden}
+
+DO NOT add features that require:
+- External hosting/infrastructure (CDN, web servers, databases beyond SQLite)
+- Community/marketplace dynamics (moderation, discovery, ratings)
+- Multi-month development effort
+- Team coordination or external dependencies
+
+Keep improvements FOCUSED. Improve weak scores without expanding scope.
+{END IF}
+
 Return an improved version with the same JSON structure:
 - id: "{new-id}" (e.g., "idea-001-r2" for round 2 refinement)
 - title, summary, facets (updated to address weaknesses)
