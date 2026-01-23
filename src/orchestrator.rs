@@ -286,11 +286,12 @@ pub fn validate_run(run_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// Export run results in landing page format
-pub fn export_run(run_id: &str, format: &str) -> Result<()> {
+/// Export run results in various preset formats
+pub fn export_run(run_id: &str, preset: &str) -> Result<()> {
     let run_dir = PathBuf::from("runs").join(run_id);
     let final_path = run_dir.join("final.json");
     let config_path = run_dir.join("config.json");
+    let state_path = run_dir.join("state.json");
 
     if !final_path.exists() {
         anyhow::bail!("Run {} has no final.json (not completed yet)", run_id);
@@ -305,23 +306,30 @@ pub fn export_run(run_id: &str, format: &str) -> Result<()> {
         None
     };
 
-    match format {
-        "landing" => {
-            let output = generate_landing_page(&result, config.as_ref())?;
+    let state: Option<serde_json::Value> = if state_path.exists() {
+        Some(serde_json::from_str(&fs::read_to_string(&state_path)?)?)
+    } else {
+        None
+    };
 
-            // Create exports directory
-            let exports_dir = run_dir.join("exports");
-            fs::create_dir_all(&exports_dir)?;
+    let (output, filename) = match preset {
+        "landing" => (generate_landing_page(&result, config.as_ref())?, "landing.md"),
+        "decision-log" => (generate_decision_log(&result, config.as_ref(), state.as_ref())?, "decision-log.md"),
+        "stakeholder-brief" => (generate_stakeholder_brief(&result, config.as_ref())?, "stakeholder-brief.md"),
+        "changelog-entry" => (generate_changelog_entry(&result, config.as_ref())?, "changelog-entry.md"),
+        _ => anyhow::bail!("Unknown preset: {} (supported: landing, decision-log, stakeholder-brief, changelog-entry)", preset),
+    };
 
-            let output_path = exports_dir.join("landing.md");
-            fs::write(&output_path, &output)?;
+    // Create exports directory
+    let exports_dir = run_dir.join("exports");
+    fs::create_dir_all(&exports_dir)?;
 
-            println!("Exported to: {}", output_path.display());
-            println!();
-            println!("{}", output);
-        }
-        _ => anyhow::bail!("Unknown export format: {} (supported: landing)", format),
-    }
+    let output_path = exports_dir.join(filename);
+    fs::write(&output_path, &output)?;
+
+    println!("Exported to: {}", output_path.display());
+    println!();
+    println!("{}", output);
 
     Ok(())
 }
@@ -403,6 +411,201 @@ fn generate_landing_page(result: &serde_json::Value, config: Option<&serde_json:
 
 fn run_id_from_result(result: &serde_json::Value) -> &str {
     result.get("run_id").and_then(|r| r.as_str()).unwrap_or("unknown")
+}
+
+/// Generate decision log format for engineering documentation
+fn generate_decision_log(
+    result: &serde_json::Value,
+    config: Option<&serde_json::Value>,
+    state: Option<&serde_json::Value>,
+) -> Result<String> {
+    let best = result.get("best_idea")
+        .or_else(|| result.get("best"))
+        .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
+
+    let run_id = run_id_from_result(result);
+    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+
+    let facets = best.get("facets");
+    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
+    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
+    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
+    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+
+    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+    let iterations = result.get("iterations_completed").and_then(|i| i.as_i64()).unwrap_or(0);
+    let stop_reason = result.get("stop_reason").and_then(|s| s.as_str()).unwrap_or("");
+
+    // Count alternatives considered
+    let alternatives_count = state
+        .and_then(|s| s.get("ideas"))
+        .and_then(|i| i.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+
+    let runner_up = result.get("runner_up");
+
+    let mut output = String::new();
+
+    output.push_str(&format!("# Decision Log: {}\n\n", title));
+    output.push_str(&format!("**Date:** {}\n", chrono::Utc::now().format("%Y-%m-%d")));
+    output.push_str(&format!("**Run ID:** `{}`\n", run_id));
+    output.push_str(&format!("**Status:** Decided\n\n"));
+
+    output.push_str("## Context\n\n");
+    output.push_str(&format!("**Problem Statement:** {}\n\n", prompt));
+    output.push_str(&format!("**Target Audience:** {}\n\n", audience));
+
+    output.push_str("## Decision\n\n");
+    output.push_str(&format!("**Selected:** {}\n\n", title));
+    output.push_str(&format!("{}\n\n", summary));
+
+    output.push_str("## Rationale\n\n");
+    output.push_str(&format!("- **Confidence Score:** {:.1}/10\n", score));
+    output.push_str(&format!("- **Key Differentiator:** {}\n", differentiator));
+    output.push_str(&format!("- **Problem Solved:** {}\n\n", jtbd));
+
+    output.push_str("## Alternatives Considered\n\n");
+    output.push_str(&format!("- **Total evaluated:** {} ideas over {} iterations\n", alternatives_count, iterations));
+
+    if let Some(runner) = runner_up {
+        let runner_title = runner.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+        let runner_score = runner.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+        output.push_str(&format!("- **Runner-up:** {} ({:.1}/10)\n", runner_title, runner_score));
+    }
+
+    output.push_str(&format!("- **Selection method:** Evolutionary algorithm with scoring\n"));
+    output.push_str(&format!("- **Stop reason:** {}\n\n", stop_reason));
+
+    output.push_str("## Risks & Mitigations\n\n");
+    output.push_str(&format!("{}\n\n", risks));
+
+    output.push_str("---\n");
+    output.push_str(&format!("*Generated by evoidea | Run: {} | Score: {:.1}/10*\n", run_id, score));
+
+    Ok(output)
+}
+
+/// Generate stakeholder brief for non-technical audiences
+fn generate_stakeholder_brief(
+    result: &serde_json::Value,
+    config: Option<&serde_json::Value>,
+) -> Result<String> {
+    let best = result.get("best_idea")
+        .or_else(|| result.get("best"))
+        .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
+
+    let run_id = run_id_from_result(result);
+    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+
+    let facets = best.get("facets");
+    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
+    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
+    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
+    let monetization = facets.and_then(|f| f.get("monetization")).and_then(|m| m.as_str()).unwrap_or("");
+    let distribution = facets.and_then(|f| f.get("distribution")).and_then(|d| d.as_str()).unwrap_or("");
+    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+
+    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+
+    // Extract product name
+    let product_name = title.split(':').next().unwrap_or(title).trim();
+
+    let mut output = String::new();
+
+    output.push_str(&format!("# {} - Executive Summary\n\n", product_name));
+
+    output.push_str("## The Opportunity\n\n");
+    output.push_str(&format!("**Direction explored:** {}\n\n", prompt));
+    output.push_str(&format!("**Recommended approach:** {}\n\n", title));
+    output.push_str(&format!("{}\n\n", summary));
+
+    output.push_str("## Key Points\n\n");
+    output.push_str(&format!("| Aspect | Details |\n"));
+    output.push_str(&format!("|--------|----------|\n"));
+    output.push_str(&format!("| Target Market | {} |\n", audience));
+    output.push_str(&format!("| Problem Solved | {} |\n", jtbd));
+    output.push_str(&format!("| Competitive Edge | {} |\n", differentiator));
+    output.push_str(&format!("| Revenue Model | {} |\n", monetization));
+    output.push_str(&format!("| Go-to-Market | {} |\n\n", distribution));
+
+    output.push_str("## Confidence Assessment\n\n");
+    let confidence_label = if score >= 7.0 {
+        "High"
+    } else if score >= 5.0 {
+        "Medium"
+    } else {
+        "Low"
+    };
+    output.push_str(&format!("**Overall Confidence:** {} ({:.1}/10)\n\n", confidence_label, score));
+    output.push_str("This assessment is based on automated evaluation of feasibility, market potential, differentiation, and risk factors.\n\n");
+
+    output.push_str("## Known Risks\n\n");
+    output.push_str(&format!("{}\n\n", risks));
+
+    output.push_str("## Next Steps\n\n");
+    output.push_str("1. Review and validate assumptions with domain experts\n");
+    output.push_str("2. Conduct customer discovery interviews\n");
+    output.push_str("3. Build minimal prototype for early feedback\n\n");
+
+    output.push_str("---\n");
+    output.push_str(&format!("*Generated by evoidea | {} | Confidence: {:.1}/10*\n", run_id, score));
+
+    Ok(output)
+}
+
+/// Generate changelog entry format
+fn generate_changelog_entry(
+    result: &serde_json::Value,
+    config: Option<&serde_json::Value>,
+) -> Result<String> {
+    let best = result.get("best_idea")
+        .or_else(|| result.get("best"))
+        .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
+
+    let run_id = run_id_from_result(result);
+    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+
+    let facets = best.get("facets");
+    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
+    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
+
+    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+    let iterations = result.get("iterations_completed").and_then(|i| i.as_i64()).unwrap_or(0);
+
+    // Extract product name
+    let product_name = title.split(':').next().unwrap_or(title).trim();
+
+    let date = chrono::Utc::now().format("%Y-%m-%d");
+
+    let mut output = String::new();
+
+    output.push_str(&format!("## [Ideation] {} - {}\n\n", product_name, date));
+
+    output.push_str("### Added\n\n");
+    output.push_str(&format!("- **New concept explored:** {}\n", title));
+    output.push_str(&format!("- **Problem space:** {}\n", prompt));
+    output.push_str(&format!("- **Target users:** {}\n\n", audience));
+
+    output.push_str("### Details\n\n");
+    output.push_str(&format!("{}\n\n", summary));
+    output.push_str(&format!("**Core value:** {}\n\n", jtbd));
+
+    output.push_str("### Metrics\n\n");
+    output.push_str(&format!("- Confidence score: {:.1}/10\n", score));
+    output.push_str(&format!("- Evolution iterations: {}\n", iterations));
+    output.push_str(&format!("- Run ID: `{}`\n\n", run_id));
+
+    output.push_str("---\n");
+    output.push_str("*Entry generated by evoidea evolutionary ideation*\n");
+
+    Ok(output)
 }
 
 /// Interactive tournament mode for preference learning
