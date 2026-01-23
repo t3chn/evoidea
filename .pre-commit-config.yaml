@@ -1,0 +1,39 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all
+        language: system
+        files: ^(Cargo\.toml|Cargo\.lock|.*\.rs)$
+        pass_filenames: false
+        require_serial: true
+
+      - id: cargo-clippy
+        name: cargo clippy (warnings=deny)
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        files: ^(Cargo\.toml|Cargo\.lock|.*\.rs)$
+        pass_filenames: false
+        require_serial: true
+
+      - id: cargo-test
+        name: cargo test (manual)
+        entry: cargo test --all-features
+        language: system
+        files: ^(Cargo\.toml|Cargo\.lock|.*\.rs)$
+        pass_filenames: false
+        require_serial: true
+        stages: [manual]

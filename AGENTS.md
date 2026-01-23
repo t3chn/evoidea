@@ -6,11 +6,15 @@ This project uses **bd** (beads) for issue tracking. Run `bd onboard` to get sta
 
 ```bash
 bd ready              # Find available work
+bd prime              # Show workflow context (run after compaction/new session)
 bd show <id>          # View issue details
+bd create "Title" --type task --priority 2  # Create issue
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
 bd sync               # Sync with git
 ```
+
+Tip: install bd hooks once for auto-context: `bd hooks install`.
 
 ## Version Control (jj)
 
@@ -37,6 +41,9 @@ Keep it short: 1-line summary + 1–3 bullets of “why”. Omit sections if obv
 Why:
 - <1–3 bullets>
 
+How:
+- <1–3 bullets>
+
 Refs: <bd-issue-id or link>
 ```
 
@@ -44,8 +51,22 @@ Refs: <bd-issue-id or link>
 ```text
 Goal: <one line>
 Why: <1–3 bullets>
+How: <1–3 bullets>
+TDD: <what test we write first>
 Done when: <1–3 bullets>
 ```
+
+## TDD cadence
+
+- Prefer small, reviewable slices: red → green → refactor.
+- Tests must be deterministic (use mocks/fixtures; no network unless explicitly smoke/e2e).
+- Keep commits focused: ideally one behavioral change per commit, with tests in the same change.
+
+## Prek (pre-commit checks)
+
+- Run: `uvx prek run --all-files`
+- Install hook: `uvx prek install`
+- Validate config: `uvx prek validate-config .pre-commit-config.yaml`
 
 ## Landing the Plane (Session Completion)
 
@@ -58,6 +79,7 @@ Done when: <1–3 bullets>
 3. **Update issue status** - Close finished work, update in-progress items
 4. **PUSH TO REMOTE** - This is MANDATORY:
    ```bash
+   uvx prek run --all-files
    jj git fetch
    bd sync
    jj bookmark move main
