@@ -21,6 +21,7 @@ jj status
 jj log
 jj new -m "summary"
 jj describe -m "summary"
+jj bookmark move main
 jj git fetch
 jj git push --bookmark <name>
 ```
@@ -59,7 +60,8 @@ Done when: <1–3 bullets>
    ```bash
    jj git fetch
    bd sync
-   jj git push --tracked
+   jj bookmark move main
+   jj git push --bookmark main
    jj status
    ```
 5. **Clean up** - Clear stashes, prune remote branches
