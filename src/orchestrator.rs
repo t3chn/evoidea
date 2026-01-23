@@ -1,5 +1,6 @@
 use anyhow::Result;
 use std::fs;
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 /// List all runs in the given directory
@@ -281,6 +282,369 @@ pub fn validate_run(run_id: &str) -> Result<()> {
             println!("  - {}", err);
         }
     }
+
+    Ok(())
+}
+
+/// Export run results in landing page format
+pub fn export_run(run_id: &str, format: &str) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+    let final_path = run_dir.join("final.json");
+    let config_path = run_dir.join("config.json");
+
+    if !final_path.exists() {
+        anyhow::bail!("Run {} has no final.json (not completed yet)", run_id);
+    }
+
+    let final_content = fs::read_to_string(&final_path)?;
+    let result: serde_json::Value = serde_json::from_str(&final_content)?;
+
+    let config: Option<serde_json::Value> = if config_path.exists() {
+        Some(serde_json::from_str(&fs::read_to_string(&config_path)?)?)
+    } else {
+        None
+    };
+
+    match format {
+        "landing" => {
+            let output = generate_landing_page(&result, config.as_ref())?;
+
+            // Create exports directory
+            let exports_dir = run_dir.join("exports");
+            fs::create_dir_all(&exports_dir)?;
+
+            let output_path = exports_dir.join("landing.md");
+            fs::write(&output_path, &output)?;
+
+            println!("Exported to: {}", output_path.display());
+            println!();
+            println!("{}", output);
+        }
+        _ => anyhow::bail!("Unknown export format: {} (supported: landing)", format),
+    }
+
+    Ok(())
+}
+
+fn generate_landing_page(result: &serde_json::Value, config: Option<&serde_json::Value>) -> Result<String> {
+    // Handle both "best_idea" and "best" formats
+    let best = result.get("best_idea")
+        .or_else(|| result.get("best"))
+        .ok_or_else(|| anyhow::anyhow!("No best_idea or best in final.json"))?;
+
+    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown Product");
+    let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
+    // Try multiple paths for score
+    let score = best.get("overall_score")
+        .or_else(|| best.get("scores").and_then(|s| s.get("overall")))
+        .and_then(|s| s.as_f64())
+        .map(|s| format!("{:.1}", s))
+        .unwrap_or_else(|| "N/A".to_string());
+
+    let facets = best.get("facets");
+    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
+    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
+    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
+    let monetization = facets.and_then(|f| f.get("monetization")).and_then(|m| m.as_str()).unwrap_or("");
+    let distribution = facets.and_then(|f| f.get("distribution")).and_then(|d| d.as_str()).unwrap_or("");
+    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+
+    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+
+    // Extract product name (first part before colon if present)
+    let product_name = title.split(':').next().unwrap_or(title).trim();
+
+    // Generate hero headline
+    let hero = format!("# {}", product_name);
+
+    // Generate tagline from summary (first sentence or truncated)
+    let tagline = summary.split('.').next().unwrap_or(summary).trim();
+
+    let mut output = String::new();
+
+    // Header with metadata
+    output.push_str(&format!("<!-- Source: {} | Score: {}/10 -->\n", run_id_from_result(result), score));
+    if !prompt.is_empty() {
+        output.push_str(&format!("<!-- Prompt: {} -->\n", prompt));
+    }
+    output.push_str("\n");
+
+    // Hero section
+    output.push_str(&hero);
+    output.push_str("\n\n");
+    output.push_str(&format!("**{}**\n\n", tagline));
+
+    // Value proposition
+    output.push_str("## The Problem\n\n");
+    output.push_str(&format!("{}\n\n", jtbd));
+
+    // Benefits (3 key points)
+    output.push_str("## Why Choose Us\n\n");
+    output.push_str(&format!("**1. Unique Approach:** {}\n\n", differentiator));
+    output.push_str(&format!("**2. Built For:** {}\n\n", audience));
+    output.push_str(&format!("**3. Clear Path to Value:** {}\n\n", distribution));
+
+    // CTA section
+    output.push_str("## Get Started\n\n");
+    output.push_str(&format!("**Pricing:** {}\n\n", monetization));
+    output.push_str("[Start Free Trial] [Book a Demo]\n\n");
+
+    // Risk acknowledgment (shows transparency)
+    output.push_str("## Our Commitment\n\n");
+    output.push_str(&format!("We know the challenges: {}\n\n", risks));
+    output.push_str("That's why we're committed to helping you succeed.\n\n");
+
+    // Footer
+    output.push_str("---\n");
+    output.push_str(&format!("*Evolution Score: {}/10*\n", score));
+
+    Ok(output)
+}
+
+fn run_id_from_result(result: &serde_json::Value) -> &str {
+    result.get("run_id").and_then(|r| r.as_str()).unwrap_or("unknown")
+}
+
+/// Interactive tournament mode for preference learning
+pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+    let state_path = run_dir.join("state.json");
+
+    if !state_path.exists() {
+        anyhow::bail!("Run {} has no state.json", run_id);
+    }
+
+    let state_content = fs::read_to_string(&state_path)?;
+    let state: serde_json::Value = serde_json::from_str(&state_content)?;
+
+    // Get all active ideas
+    let ideas = state.get("ideas")
+        .and_then(|i| i.as_array())
+        .ok_or_else(|| anyhow::anyhow!("No ideas in state.json"))?;
+
+    let active_ideas: Vec<&serde_json::Value> = ideas.iter()
+        .filter(|idea| {
+            idea.get("status")
+                .and_then(|s| s.as_str())
+                .map(|s| s == "active")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if active_ideas.len() < 2 {
+        anyhow::bail!("Need at least 2 active ideas for tournament (found {})", active_ideas.len());
+    }
+
+    println!("Tournament Mode for run: {}", run_id);
+    println!("Active ideas: {}", active_ideas.len());
+    println!();
+
+    if auto {
+        // Auto mode: just show ranking by score
+        println!("=== Auto Mode: Ranking by Score ===\n");
+
+        let mut ranked: Vec<(&serde_json::Value, f64)> = active_ideas.iter()
+            .map(|idea| {
+                let score = idea.get("overall_score")
+                    .and_then(|s| s.as_f64())
+                    .unwrap_or(0.0);
+                (*idea, score)
+            })
+            .collect();
+
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        for (rank, (idea, score)) in ranked.iter().enumerate() {
+            let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+            let short_title: String = title.chars().take(60).collect();
+            println!("{}. [{:.2}] {}", rank + 1, score, short_title);
+        }
+
+        return Ok(());
+    }
+
+    // Interactive tournament mode
+    let preferences_path = run_dir.join("preferences.json");
+    let mut preferences: serde_json::Value = if preferences_path.exists() {
+        serde_json::from_str(&fs::read_to_string(&preferences_path)?)?
+    } else {
+        serde_json::json!({
+            "comparisons": [],
+            "elo_ratings": {}
+        })
+    };
+
+    // Initialize Elo ratings if needed
+    {
+        let elo_ratings = preferences.get_mut("elo_ratings")
+            .and_then(|e| e.as_object_mut())
+            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+
+        for idea in &active_ideas {
+            let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("unknown");
+            if !elo_ratings.contains_key(id) {
+                elo_ratings.insert(id.to_string(), serde_json::json!(1000.0));
+            }
+        }
+    }
+
+    // Generate pairs for comparison
+    let mut pairs: Vec<(usize, usize)> = Vec::new();
+    for i in 0..active_ideas.len() {
+        for j in (i + 1)..active_ideas.len() {
+            pairs.push((i, j));
+        }
+    }
+
+    println!("=== Interactive Tournament ===");
+    println!("Compare ideas and pick your preference.");
+    println!("Commands: [A] Choose A | [B] Choose B | [S] Skip | [Q] Quit\n");
+
+    let mut comparison_count = 0;
+
+    for (i, j) in pairs {
+        let idea_a = active_ideas[i];
+        let idea_b = active_ideas[j];
+
+        let id_a = idea_a.get("id").and_then(|i| i.as_str()).unwrap_or("unknown").to_string();
+        let id_b = idea_b.get("id").and_then(|i| i.as_str()).unwrap_or("unknown").to_string();
+
+        // Check if we've already compared these
+        let already_compared = {
+            let comparisons = preferences.get("comparisons")
+                .and_then(|c| c.as_array())
+                .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+            comparisons.iter().any(|c| {
+                let ca = c.get("idea_a").and_then(|a| a.as_str());
+                let cb = c.get("idea_b").and_then(|b| b.as_str());
+                (ca == Some(&id_a) && cb == Some(&id_b)) || (ca == Some(&id_b) && cb == Some(&id_a))
+            })
+        };
+
+        if already_compared {
+            continue;
+        }
+
+        let title_a = idea_a.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+        let title_b = idea_b.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+        let score_a = idea_a.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+        let score_b = idea_b.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+
+        println!("--- Comparison {} ---", comparison_count + 1);
+        println!();
+        println!("[A] {} (score: {:.2})", title_a, score_a);
+        println!();
+        println!("[B] {} (score: {:.2})", title_b, score_b);
+        println!();
+        print!("Your choice [A/B/S/Q]: ");
+        io::stdout().flush()?;
+
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let choice = input.trim().to_uppercase();
+
+        match choice.as_str() {
+            "A" => {
+                {
+                    let comparisons = preferences.get_mut("comparisons")
+                        .and_then(|c| c.as_array_mut())
+                        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                    comparisons.push(serde_json::json!({
+                        "idea_a": id_a,
+                        "idea_b": id_b,
+                        "winner": id_a
+                    }));
+                }
+                update_elo(&mut preferences, &id_a, &id_b)?;
+                comparison_count += 1;
+                println!("Recorded: {} wins\n", title_a.chars().take(40).collect::<String>());
+            }
+            "B" => {
+                {
+                    let comparisons = preferences.get_mut("comparisons")
+                        .and_then(|c| c.as_array_mut())
+                        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                    comparisons.push(serde_json::json!({
+                        "idea_a": id_a,
+                        "idea_b": id_b,
+                        "winner": id_b
+                    }));
+                }
+                update_elo(&mut preferences, &id_b, &id_a)?;
+                comparison_count += 1;
+                println!("Recorded: {} wins\n", title_b.chars().take(40).collect::<String>());
+            }
+            "S" => {
+                println!("Skipped\n");
+            }
+            "Q" => {
+                println!("Quitting tournament...\n");
+                break;
+            }
+            _ => {
+                println!("Invalid choice, skipping\n");
+            }
+        }
+
+        // Save after each comparison
+        fs::write(&preferences_path, serde_json::to_string_pretty(&preferences)?)?;
+    }
+
+    // Show final rankings
+    println!("=== Current Rankings (by Elo) ===\n");
+
+    let elo_ratings = preferences.get("elo_ratings")
+        .and_then(|e| e.as_object())
+        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+
+    let mut ranked: Vec<(&str, f64)> = elo_ratings.iter()
+        .filter_map(|(id, rating)| {
+            rating.as_f64().map(|r| (id.as_str(), r))
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (rank, (id, elo)) in ranked.iter().enumerate() {
+        // Find the idea title
+        let title = active_ideas.iter()
+            .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(*id))
+            .and_then(|idea| idea.get("title").and_then(|t| t.as_str()))
+            .unwrap_or("Unknown");
+        let short_title: String = title.chars().take(50).collect();
+        println!("{}. [Elo: {:.0}] {}", rank + 1, elo, short_title);
+    }
+
+    println!("\nPreferences saved to: {}", preferences_path.display());
+    println!("Comparisons made: {}", comparison_count);
+
+    Ok(())
+}
+
+fn update_elo(preferences: &mut serde_json::Value, winner_id: &str, loser_id: &str) -> Result<()> {
+    let k_factor = 32.0;
+
+    let elo_ratings = preferences.get_mut("elo_ratings")
+        .and_then(|e| e.as_object_mut())
+        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+
+    let winner_elo = elo_ratings.get(winner_id)
+        .and_then(|e| e.as_f64())
+        .unwrap_or(1000.0);
+    let loser_elo = elo_ratings.get(loser_id)
+        .and_then(|e| e.as_f64())
+        .unwrap_or(1000.0);
+
+    // Calculate expected scores
+    let expected_winner = 1.0 / (1.0 + 10.0_f64.powf((loser_elo - winner_elo) / 400.0));
+    let expected_loser = 1.0 - expected_winner;
+
+    // Update ratings (winner gets 1.0, loser gets 0.0)
+    let new_winner_elo = winner_elo + k_factor * (1.0 - expected_winner);
+    let new_loser_elo = loser_elo + k_factor * (0.0 - expected_loser);
+
+    elo_ratings.insert(winner_id.to_string(), serde_json::json!(new_winner_elo));
+    elo_ratings.insert(loser_id.to_string(), serde_json::json!(new_loser_elo));
 
     Ok(())
 }

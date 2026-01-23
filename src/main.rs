@@ -42,6 +42,28 @@ enum Commands {
         #[arg(long)]
         run_id: String,
     },
+
+    /// Export run results in landing page format
+    Export {
+        /// Run ID to export
+        #[arg(long)]
+        run_id: String,
+
+        /// Export format (landing)
+        #[arg(long, default_value = "landing")]
+        format: String,
+    },
+
+    /// Interactive tournament mode for preference learning
+    Tournament {
+        /// Run ID to run tournament on
+        #[arg(long)]
+        run_id: String,
+
+        /// Use automatic mode (no interaction, scores only)
+        #[arg(long)]
+        auto: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -63,6 +85,14 @@ fn main() -> Result<()> {
         Commands::Validate { run_id } => {
             tracing::info!(run_id = %run_id, "Validating run");
             orchestrator::validate_run(&run_id)?;
+        }
+        Commands::Export { run_id, format } => {
+            tracing::info!(run_id = %run_id, format = %format, "Exporting run");
+            orchestrator::export_run(&run_id, &format)?;
+        }
+        Commands::Tournament { run_id, auto } => {
+            tracing::info!(run_id = %run_id, auto = %auto, "Running tournament");
+            orchestrator::tournament(&run_id, auto)?;
         }
     }
 
