@@ -734,6 +734,172 @@ pub fn profile_import(file: &str, run_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Render evolution tree visualization
+pub fn render_tree(run_id: &str, format: &str) -> Result<()> {
+    let run_dir = PathBuf::from("runs").join(run_id);
+    let state_path = run_dir.join("state.json");
+
+    if !state_path.exists() {
+        anyhow::bail!("Run {} not found", run_id);
+    }
+
+    let state: serde_json::Value = serde_json::from_str(&fs::read_to_string(&state_path)?)?;
+    let ideas = state.get("ideas")
+        .and_then(|i| i.as_array())
+        .ok_or_else(|| anyhow::anyhow!("Invalid state: missing ideas"))?;
+
+    if ideas.is_empty() {
+        println!("No ideas in run {}", run_id);
+        return Ok(());
+    }
+
+    // Build parent -> children map
+    let mut children_map: std::collections::HashMap<String, Vec<&serde_json::Value>> = std::collections::HashMap::new();
+    let mut roots: Vec<&serde_json::Value> = Vec::new();
+
+    for idea in ideas {
+        let parents = idea.get("parents")
+            .and_then(|p| p.as_array())
+            .map(|p| p.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_default();
+
+        if parents.is_empty() {
+            roots.push(idea);
+        } else {
+            for parent_id in parents {
+                children_map.entry(parent_id.to_string())
+                    .or_default()
+                    .push(idea);
+            }
+        }
+    }
+
+    match format {
+        "mermaid" => render_mermaid_tree(&roots, &children_map, run_id),
+        "ascii" | _ => render_ascii_tree(&roots, &children_map, run_id),
+    }
+}
+
+fn render_ascii_tree(
+    roots: &[&serde_json::Value],
+    children_map: &std::collections::HashMap<String, Vec<&serde_json::Value>>,
+    run_id: &str,
+) -> Result<()> {
+    println!("=== Evolution Tree: {} ===\n", run_id);
+
+    for root in roots {
+        print_idea_node(root, children_map, "", true);
+    }
+
+    // Legend
+    println!("\nLegend: [score] status title");
+    println!("  * = active, ~ = archived, x = eliminated");
+
+    Ok(())
+}
+
+fn print_idea_node(
+    idea: &serde_json::Value,
+    children_map: &std::collections::HashMap<String, Vec<&serde_json::Value>>,
+    prefix: &str,
+    is_last: bool,
+) {
+    let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+    let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let score = idea.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
+
+    let status_char = match status {
+        "active" => "*",
+        "archived" => "~",
+        "eliminated" => "x",
+        _ => "?",
+    };
+
+    let connector = if is_last { "└── " } else { "├── " };
+    let short_title: String = title.chars().take(40).collect();
+    let title_display = if title.len() > 40 {
+        format!("{}...", short_title)
+    } else {
+        short_title
+    };
+
+    println!("{}{}{} [{:.1}] {} {}", prefix, connector, status_char, score, id, title_display);
+
+    // Print children
+    if let Some(children) = children_map.get(id) {
+        let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+        for (i, child) in children.iter().enumerate() {
+            let child_is_last = i == children.len() - 1;
+            print_idea_node(child, children_map, &new_prefix, child_is_last);
+        }
+    }
+}
+
+fn render_mermaid_tree(
+    roots: &[&serde_json::Value],
+    children_map: &std::collections::HashMap<String, Vec<&serde_json::Value>>,
+    run_id: &str,
+) -> Result<()> {
+    println!("```mermaid");
+    println!("flowchart TD");
+    println!("    subgraph {}[\"Evolution: {}\"]", run_id.replace('-', "_"), run_id);
+
+    // Collect all nodes
+    let mut all_ideas: Vec<&serde_json::Value> = roots.to_vec();
+    for children in children_map.values() {
+        all_ideas.extend(children.iter());
+    }
+
+    // Print nodes with styling
+    for idea in &all_ideas {
+        let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+        let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+        let score = idea.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+        let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
+
+        let short_title: String = title.chars().take(25).collect();
+        let safe_id = id.replace('-', "_");
+
+        let shape = match status {
+            "active" => format!("{}([\"{}\\n{:.1}\"])", safe_id, short_title, score),
+            "eliminated" => format!("{}{{\"{}\\n{:.1}\"}}", safe_id, short_title, score),
+            _ => format!("{}[\"{}\\n{:.1}\"]", safe_id, short_title, score),
+        };
+
+        println!("    {}", shape);
+    }
+
+    // Print edges
+    for (parent_id, children) in children_map {
+        let safe_parent = parent_id.replace('-', "_");
+        for child in children {
+            let child_id = child.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+            let safe_child = child_id.replace('-', "_");
+            println!("    {} --> {}", safe_parent, safe_child);
+        }
+    }
+
+    // Styling
+    println!("    end");
+    println!("    classDef active fill:#90EE90,stroke:#228B22");
+    println!("    classDef archived fill:#D3D3D3,stroke:#808080");
+    println!("    classDef eliminated fill:#FFB6C1,stroke:#DC143C");
+
+    // Apply classes
+    for idea in &all_ideas {
+        let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+        let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
+        let safe_id = id.replace('-', "_");
+
+        println!("    class {} {}", safe_id, status);
+    }
+
+    println!("```");
+
+    Ok(())
+}
+
 /// Show profile information for a run
 pub fn profile_show(run_id: &str) -> Result<()> {
     let run_dir = PathBuf::from("runs").join(run_id);

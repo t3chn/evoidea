@@ -70,6 +70,17 @@ enum Commands {
         #[command(subcommand)]
         action: ProfileAction,
     },
+
+    /// Visualize idea evolution as ancestry tree
+    Tree {
+        /// Run ID to visualize
+        #[arg(long)]
+        run_id: String,
+
+        /// Output format (ascii or mermaid)
+        #[arg(long, default_value = "ascii")]
+        format: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -146,6 +157,10 @@ fn main() -> Result<()> {
                 orchestrator::profile_show(&run_id)?;
             }
         },
+        Commands::Tree { run_id, format } => {
+            tracing::info!(run_id = %run_id, format = %format, "Rendering tree");
+            orchestrator::render_tree(&run_id, &format)?;
+        }
     }
 
     Ok(())
