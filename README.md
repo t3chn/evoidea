@@ -97,6 +97,9 @@ claude
 
 # with constraints
 /evoidea "SaaS for freelancers" --budget 1000 --timeline 4 --solo --no crypto,hardware
+
+# with domain examples (few-shot learning)
+/evoidea "Developer tools" --examples examples/devtools.json
 ```
 
 ### CLI utilities
@@ -111,11 +114,23 @@ evoidea list
 # show run results
 evoidea show --run-id run-20260123-181141
 
-# export winner to landing page format
-evoidea export --run-id run-20260123-181141
+# export to various formats
+evoidea export --run-id run-20260123-181141 --preset landing
+evoidea export --run-id run-20260123-181141 --preset decision-log
+evoidea export --run-id run-20260123-181141 --preset stakeholder-brief
+evoidea export --run-id run-20260123-181141 --preset changelog-entry
+
+# visualize evolution tree
+evoidea tree --run-id run-20260123-181141
+evoidea tree --run-id run-20260123-181141 --format mermaid
 
 # interactive tournament (rank ideas by preference)
 evoidea tournament --run-id run-20260123-181141
+
+# preference profiles (persist tournament calibration)
+evoidea profile show --run-id run-20260123-181141
+evoidea profile export --run-id run-20260123-181141 --output prefs.json
+evoidea profile import --file prefs.json --run-id run-20260123-181141
 ```
 
 </details>
@@ -141,6 +156,7 @@ evoidea tournament --run-id run-20260123-181141
 | `--no LIST` | Forbidden elements | `--no crypto,hardware` |
 | `--solo` | Solo dev constraint (flag) | `--solo` |
 | `--resume ID` | Continue from run | `--resume run-20260123-181141` |
+| `--examples FILE` | Domain examples for few-shot | `--examples examples/devtools.json` |
 
 **Evolution phases:**
 
@@ -189,9 +205,19 @@ After running `/evoidea`, you'll have:
 
 3. **Evolution history** showing how ideas improved
 
-4. **Exportable formats**:
-   - `evoidea export` → landing page markdown
-   - `evoidea tournament` → interactive ranking
+4. **Exportable formats** (`evoidea export --preset`):
+   - `landing` → marketing landing page
+   - `decision-log` → technical decision record
+   - `stakeholder-brief` → executive summary
+   - `changelog-entry` → release notes format
+
+5. **Visualization** (`evoidea tree`):
+   - ASCII tree showing parent→child evolution
+   - Mermaid diagram for documentation
+
+6. **Preference profiles** (`evoidea profile`):
+   - Export/import tournament calibration
+   - Share preferences across runs
 
 ### Tips for good prompts
 
@@ -246,6 +272,7 @@ evoidea validate --run-id <run_id>
 - The skill uses Claude Code's Task tool to parallelize refinement
 - Constraints are optional but recommended for realistic ideas
 - Tournament mode helps calibrate your preferences for future runs
+- Bundled examples: `examples/devtools.json`, `examples/saas.json`, `examples/consumer.json`
 
 </details>
 
