@@ -19,7 +19,8 @@ pub fn list_runs(dir: &str) -> Result<()> {
         let path = entry.path();
 
         if path.is_dir() {
-            let run_id = path.file_name()
+            let run_id = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string();
@@ -31,9 +32,7 @@ pub fn list_runs(dir: &str) -> Result<()> {
                 // Try to parse final.json to get best score
                 let score = fs::read_to_string(&final_path)
                     .ok()
-                    .and_then(|content| {
-                        serde_json::from_str::<serde_json::Value>(&content).ok()
-                    })
+                    .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
                     .and_then(|v| {
                         v.get("best_idea")
                             .and_then(|b| b.get("overall_score"))
@@ -89,7 +88,8 @@ pub fn show_run(run_id: &str, format: &str) -> Result<()> {
                 println!("Current iteration: {}", iteration);
             }
             if let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) {
-                let active = ideas.iter()
+                let active = ideas
+                    .iter()
                     .filter(|i| i.get("status").and_then(|s| s.as_str()) == Some("active"))
                     .count();
                 println!("Active ideas: {}", active);
@@ -111,9 +111,13 @@ pub fn show_run(run_id: &str, format: &str) -> Result<()> {
             let result: serde_json::Value = serde_json::from_str(&content)?;
 
             if let Some(best) = result.get("best_idea") {
-                let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                let title = best
+                    .get("title")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("Unknown");
                 let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
-                let score = best.get("overall_score")
+                let score = best
+                    .get("overall_score")
                     .and_then(|s| s.as_f64())
                     .map(|s| format!("{:.2}", s))
                     .unwrap_or_else(|| "-".to_string());
@@ -147,7 +151,10 @@ pub fn show_run(run_id: &str, format: &str) -> Result<()> {
 
             if let Some(runner_up) = result.get("runner_up") {
                 if !runner_up.is_null() {
-                    let title = runner_up.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+                    let title = runner_up
+                        .get("title")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("Unknown");
                     println!("\n## Runner Up: {}", title);
                 }
             }
@@ -172,18 +179,18 @@ pub fn validate_run(run_id: &str) -> Result<()> {
     let config_path = run_dir.join("config.json");
     if config_path.exists() {
         match fs::read_to_string(&config_path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(config) => {
-                        let prompt = config.get("prompt")
-                            .and_then(|p| p.as_str())
-                            .unwrap_or("?");
-                        let truncated = if prompt.len() > 30 { &prompt[..30] } else { prompt };
-                        println!("Config: OK (prompt: {}...)", truncated);
-                    }
-                    Err(e) => errors.push(format!("Config JSON invalid: {}", e)),
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(config) => {
+                    let prompt = config.get("prompt").and_then(|p| p.as_str()).unwrap_or("?");
+                    let truncated = if prompt.len() > 30 {
+                        &prompt[..30]
+                    } else {
+                        prompt
+                    };
+                    println!("Config: OK (prompt: {}...)", truncated);
                 }
-            }
+                Err(e) => errors.push(format!("Config JSON invalid: {}", e)),
+            },
             Err(e) => errors.push(format!("Config read error: {}", e)),
         }
     } else {
@@ -197,30 +204,42 @@ pub fn validate_run(run_id: &str) -> Result<()> {
             Ok(content) => {
                 match serde_json::from_str::<serde_json::Value>(&content) {
                     Ok(state) => {
-                        let iteration = state.get("iteration").and_then(|i| i.as_u64()).unwrap_or(0);
-                        let ideas_count = state.get("ideas")
+                        let iteration =
+                            state.get("iteration").and_then(|i| i.as_u64()).unwrap_or(0);
+                        let ideas_count = state
+                            .get("ideas")
                             .and_then(|i| i.as_array())
                             .map(|a| a.len())
                             .unwrap_or(0);
-                        println!("State: OK (iteration: {}, ideas: {})", iteration, ideas_count);
+                        println!(
+                            "State: OK (iteration: {}, ideas: {})",
+                            iteration, ideas_count
+                        );
 
                         // Validate idea invariants
                         if let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) {
                             for idea in ideas {
                                 let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
-                                let origin = idea.get("origin").and_then(|o| o.as_str()).unwrap_or("?");
+                                let origin =
+                                    idea.get("origin").and_then(|o| o.as_str()).unwrap_or("?");
                                 let parents = idea.get("parents").and_then(|p| p.as_array());
                                 let has_parents = parents.map(|p| !p.is_empty()).unwrap_or(false);
 
                                 match origin {
                                     "generated" => {
                                         if has_parents {
-                                            errors.push(format!("Idea {} (generated) has parents", id));
+                                            errors.push(format!(
+                                                "Idea {} (generated) has parents",
+                                                id
+                                            ));
                                         }
                                     }
                                     "refined" | "crossover" | "mutated" => {
                                         if !has_parents {
-                                            errors.push(format!("Idea {} ({}) has no parents", id, origin));
+                                            errors.push(format!(
+                                                "Idea {} ({}) has no parents",
+                                                id, origin
+                                            ));
                                         }
                                     }
                                     _ => {}
@@ -255,18 +274,17 @@ pub fn validate_run(run_id: &str) -> Result<()> {
     let final_path = run_dir.join("final.json");
     if final_path.exists() {
         match fs::read_to_string(&final_path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(result) => {
-                        let title = result.get("best_idea")
-                            .and_then(|b| b.get("title"))
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("?");
-                        println!("Final: OK (best: {})", title);
-                    }
-                    Err(e) => errors.push(format!("Final JSON invalid: {}", e)),
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(result) => {
+                    let title = result
+                        .get("best_idea")
+                        .and_then(|b| b.get("title"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("?");
+                    println!("Final: OK (best: {})", title);
                 }
-            }
+                Err(e) => errors.push(format!("Final JSON invalid: {}", e)),
+            },
             Err(e) => errors.push(format!("Final read error: {}", e)),
         }
     } else {
@@ -334,30 +352,59 @@ pub fn export_run(run_id: &str, preset: &str) -> Result<()> {
     Ok(())
 }
 
-fn generate_landing_page(result: &serde_json::Value, config: Option<&serde_json::Value>) -> Result<String> {
+fn generate_landing_page(
+    result: &serde_json::Value,
+    config: Option<&serde_json::Value>,
+) -> Result<String> {
     // Handle both "best_idea" and "best" formats
-    let best = result.get("best_idea")
+    let best = result
+        .get("best_idea")
         .or_else(|| result.get("best"))
         .ok_or_else(|| anyhow::anyhow!("No best_idea or best in final.json"))?;
 
-    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown Product");
+    let title = best
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Unknown Product");
     let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
     // Try multiple paths for score
-    let score = best.get("overall_score")
+    let score = best
+        .get("overall_score")
         .or_else(|| best.get("scores").and_then(|s| s.get("overall")))
         .and_then(|s| s.as_f64())
         .map(|s| format!("{:.1}", s))
         .unwrap_or_else(|| "N/A".to_string());
 
     let facets = best.get("facets");
-    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
-    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
-    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
-    let monetization = facets.and_then(|f| f.get("monetization")).and_then(|m| m.as_str()).unwrap_or("");
-    let distribution = facets.and_then(|f| f.get("distribution")).and_then(|d| d.as_str()).unwrap_or("");
-    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+    let audience = facets
+        .and_then(|f| f.get("audience"))
+        .and_then(|a| a.as_str())
+        .unwrap_or("");
+    let jtbd = facets
+        .and_then(|f| f.get("jtbd"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+    let differentiator = facets
+        .and_then(|f| f.get("differentiator"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+    let monetization = facets
+        .and_then(|f| f.get("monetization"))
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+    let distribution = facets
+        .and_then(|f| f.get("distribution"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+    let risks = facets
+        .and_then(|f| f.get("risks"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
 
-    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+    let prompt = config
+        .and_then(|c| c.get("prompt"))
+        .and_then(|p| p.as_str())
+        .unwrap_or("");
 
     // Extract product name (first part before colon if present)
     let product_name = title.split(':').next().unwrap_or(title).trim();
@@ -371,11 +418,15 @@ fn generate_landing_page(result: &serde_json::Value, config: Option<&serde_json:
     let mut output = String::new();
 
     // Header with metadata
-    output.push_str(&format!("<!-- Source: {} | Score: {}/10 -->\n", run_id_from_result(result), score));
+    output.push_str(&format!(
+        "<!-- Source: {} | Score: {}/10 -->\n",
+        run_id_from_result(result),
+        score
+    ));
     if !prompt.is_empty() {
         output.push_str(&format!("<!-- Prompt: {} -->\n", prompt));
     }
-    output.push_str("\n");
+    output.push('\n');
 
     // Hero section
     output.push_str(&hero);
@@ -410,7 +461,10 @@ fn generate_landing_page(result: &serde_json::Value, config: Option<&serde_json:
 }
 
 fn run_id_from_result(result: &serde_json::Value) -> &str {
-    result.get("run_id").and_then(|r| r.as_str()).unwrap_or("unknown")
+    result
+        .get("run_id")
+        .and_then(|r| r.as_str())
+        .unwrap_or("unknown")
 }
 
 /// Generate decision log format for engineering documentation
@@ -419,24 +473,52 @@ fn generate_decision_log(
     config: Option<&serde_json::Value>,
     state: Option<&serde_json::Value>,
 ) -> Result<String> {
-    let best = result.get("best_idea")
+    let best = result
+        .get("best_idea")
         .or_else(|| result.get("best"))
         .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
 
     let run_id = run_id_from_result(result);
-    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let title = best
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Unknown");
     let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
-    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    let score = best
+        .get("overall_score")
+        .and_then(|s| s.as_f64())
+        .unwrap_or(0.0);
 
     let facets = best.get("facets");
-    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
-    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
-    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
-    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+    let audience = facets
+        .and_then(|f| f.get("audience"))
+        .and_then(|a| a.as_str())
+        .unwrap_or("");
+    let jtbd = facets
+        .and_then(|f| f.get("jtbd"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+    let differentiator = facets
+        .and_then(|f| f.get("differentiator"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+    let risks = facets
+        .and_then(|f| f.get("risks"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
 
-    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
-    let iterations = result.get("iterations_completed").and_then(|i| i.as_i64()).unwrap_or(0);
-    let stop_reason = result.get("stop_reason").and_then(|s| s.as_str()).unwrap_or("");
+    let prompt = config
+        .and_then(|c| c.get("prompt"))
+        .and_then(|p| p.as_str())
+        .unwrap_or("");
+    let iterations = result
+        .get("iterations_completed")
+        .and_then(|i| i.as_i64())
+        .unwrap_or(0);
+    let stop_reason = result
+        .get("stop_reason")
+        .and_then(|s| s.as_str())
+        .unwrap_or("");
 
     // Count alternatives considered
     let alternatives_count = state
@@ -450,9 +532,12 @@ fn generate_decision_log(
     let mut output = String::new();
 
     output.push_str(&format!("# Decision Log: {}\n\n", title));
-    output.push_str(&format!("**Date:** {}\n", chrono::Utc::now().format("%Y-%m-%d")));
+    output.push_str(&format!(
+        "**Date:** {}\n",
+        chrono::Utc::now().format("%Y-%m-%d")
+    ));
     output.push_str(&format!("**Run ID:** `{}`\n", run_id));
-    output.push_str(&format!("**Status:** Decided\n\n"));
+    output.push_str("**Status:** Decided\n\n");
 
     output.push_str("## Context\n\n");
     output.push_str(&format!("**Problem Statement:** {}\n\n", prompt));
@@ -468,22 +553,37 @@ fn generate_decision_log(
     output.push_str(&format!("- **Problem Solved:** {}\n\n", jtbd));
 
     output.push_str("## Alternatives Considered\n\n");
-    output.push_str(&format!("- **Total evaluated:** {} ideas over {} iterations\n", alternatives_count, iterations));
+    output.push_str(&format!(
+        "- **Total evaluated:** {} ideas over {} iterations\n",
+        alternatives_count, iterations
+    ));
 
     if let Some(runner) = runner_up {
-        let runner_title = runner.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
-        let runner_score = runner.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
-        output.push_str(&format!("- **Runner-up:** {} ({:.1}/10)\n", runner_title, runner_score));
+        let runner_title = runner
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown");
+        let runner_score = runner
+            .get("overall_score")
+            .and_then(|s| s.as_f64())
+            .unwrap_or(0.0);
+        output.push_str(&format!(
+            "- **Runner-up:** {} ({:.1}/10)\n",
+            runner_title, runner_score
+        ));
     }
 
-    output.push_str(&format!("- **Selection method:** Evolutionary algorithm with scoring\n"));
+    output.push_str("- **Selection method:** Evolutionary algorithm with scoring\n");
     output.push_str(&format!("- **Stop reason:** {}\n\n", stop_reason));
 
     output.push_str("## Risks & Mitigations\n\n");
     output.push_str(&format!("{}\n\n", risks));
 
     output.push_str("---\n");
-    output.push_str(&format!("*Generated by evoidea | Run: {} | Score: {:.1}/10*\n", run_id, score));
+    output.push_str(&format!(
+        "*Generated by evoidea | Run: {} | Score: {:.1}/10*\n",
+        run_id, score
+    ));
 
     Ok(output)
 }
@@ -493,24 +593,52 @@ fn generate_stakeholder_brief(
     result: &serde_json::Value,
     config: Option<&serde_json::Value>,
 ) -> Result<String> {
-    let best = result.get("best_idea")
+    let best = result
+        .get("best_idea")
         .or_else(|| result.get("best"))
         .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
 
     let run_id = run_id_from_result(result);
-    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let title = best
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Unknown");
     let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
-    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    let score = best
+        .get("overall_score")
+        .and_then(|s| s.as_f64())
+        .unwrap_or(0.0);
 
     let facets = best.get("facets");
-    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
-    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
-    let differentiator = facets.and_then(|f| f.get("differentiator")).and_then(|d| d.as_str()).unwrap_or("");
-    let monetization = facets.and_then(|f| f.get("monetization")).and_then(|m| m.as_str()).unwrap_or("");
-    let distribution = facets.and_then(|f| f.get("distribution")).and_then(|d| d.as_str()).unwrap_or("");
-    let risks = facets.and_then(|f| f.get("risks")).and_then(|r| r.as_str()).unwrap_or("");
+    let audience = facets
+        .and_then(|f| f.get("audience"))
+        .and_then(|a| a.as_str())
+        .unwrap_or("");
+    let jtbd = facets
+        .and_then(|f| f.get("jtbd"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
+    let differentiator = facets
+        .and_then(|f| f.get("differentiator"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+    let monetization = facets
+        .and_then(|f| f.get("monetization"))
+        .and_then(|m| m.as_str())
+        .unwrap_or("");
+    let distribution = facets
+        .and_then(|f| f.get("distribution"))
+        .and_then(|d| d.as_str())
+        .unwrap_or("");
+    let risks = facets
+        .and_then(|f| f.get("risks"))
+        .and_then(|r| r.as_str())
+        .unwrap_or("");
 
-    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
+    let prompt = config
+        .and_then(|c| c.get("prompt"))
+        .and_then(|p| p.as_str())
+        .unwrap_or("");
 
     // Extract product name
     let product_name = title.split(':').next().unwrap_or(title).trim();
@@ -525,8 +653,8 @@ fn generate_stakeholder_brief(
     output.push_str(&format!("{}\n\n", summary));
 
     output.push_str("## Key Points\n\n");
-    output.push_str(&format!("| Aspect | Details |\n"));
-    output.push_str(&format!("|--------|----------|\n"));
+    output.push_str("| Aspect | Details |\n");
+    output.push_str("|--------|----------|\n");
     output.push_str(&format!("| Target Market | {} |\n", audience));
     output.push_str(&format!("| Problem Solved | {} |\n", jtbd));
     output.push_str(&format!("| Competitive Edge | {} |\n", differentiator));
@@ -541,7 +669,10 @@ fn generate_stakeholder_brief(
     } else {
         "Low"
     };
-    output.push_str(&format!("**Overall Confidence:** {} ({:.1}/10)\n\n", confidence_label, score));
+    output.push_str(&format!(
+        "**Overall Confidence:** {} ({:.1}/10)\n\n",
+        confidence_label, score
+    ));
     output.push_str("This assessment is based on automated evaluation of feasibility, market potential, differentiation, and risk factors.\n\n");
 
     output.push_str("## Known Risks\n\n");
@@ -553,7 +684,10 @@ fn generate_stakeholder_brief(
     output.push_str("3. Build minimal prototype for early feedback\n\n");
 
     output.push_str("---\n");
-    output.push_str(&format!("*Generated by evoidea | {} | Confidence: {:.1}/10*\n", run_id, score));
+    output.push_str(&format!(
+        "*Generated by evoidea | {} | Confidence: {:.1}/10*\n",
+        run_id, score
+    ));
 
     Ok(output)
 }
@@ -563,21 +697,40 @@ fn generate_changelog_entry(
     result: &serde_json::Value,
     config: Option<&serde_json::Value>,
 ) -> Result<String> {
-    let best = result.get("best_idea")
+    let best = result
+        .get("best_idea")
         .or_else(|| result.get("best"))
         .ok_or_else(|| anyhow::anyhow!("No best_idea in final.json"))?;
 
     let run_id = run_id_from_result(result);
-    let title = best.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+    let title = best
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Unknown");
     let summary = best.get("summary").and_then(|s| s.as_str()).unwrap_or("");
-    let score = best.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    let score = best
+        .get("overall_score")
+        .and_then(|s| s.as_f64())
+        .unwrap_or(0.0);
 
     let facets = best.get("facets");
-    let audience = facets.and_then(|f| f.get("audience")).and_then(|a| a.as_str()).unwrap_or("");
-    let jtbd = facets.and_then(|f| f.get("jtbd")).and_then(|j| j.as_str()).unwrap_or("");
+    let audience = facets
+        .and_then(|f| f.get("audience"))
+        .and_then(|a| a.as_str())
+        .unwrap_or("");
+    let jtbd = facets
+        .and_then(|f| f.get("jtbd"))
+        .and_then(|j| j.as_str())
+        .unwrap_or("");
 
-    let prompt = config.and_then(|c| c.get("prompt")).and_then(|p| p.as_str()).unwrap_or("");
-    let iterations = result.get("iterations_completed").and_then(|i| i.as_i64()).unwrap_or(0);
+    let prompt = config
+        .and_then(|c| c.get("prompt"))
+        .and_then(|p| p.as_str())
+        .unwrap_or("");
+    let iterations = result
+        .get("iterations_completed")
+        .and_then(|i| i.as_i64())
+        .unwrap_or(0);
 
     // Extract product name
     let product_name = title.split(':').next().unwrap_or(title).trim();
@@ -621,11 +774,13 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
     let state: serde_json::Value = serde_json::from_str(&state_content)?;
 
     // Get all active ideas
-    let ideas = state.get("ideas")
+    let ideas = state
+        .get("ideas")
         .and_then(|i| i.as_array())
         .ok_or_else(|| anyhow::anyhow!("No ideas in state.json"))?;
 
-    let active_ideas: Vec<&serde_json::Value> = ideas.iter()
+    let active_ideas: Vec<&serde_json::Value> = ideas
+        .iter()
         .filter(|idea| {
             idea.get("status")
                 .and_then(|s| s.as_str())
@@ -635,7 +790,10 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         .collect();
 
     if active_ideas.len() < 2 {
-        anyhow::bail!("Need at least 2 active ideas for tournament (found {})", active_ideas.len());
+        anyhow::bail!(
+            "Need at least 2 active ideas for tournament (found {})",
+            active_ideas.len()
+        );
     }
 
     println!("Tournament Mode for run: {}", run_id);
@@ -646,9 +804,11 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         // Auto mode: just show ranking by score
         println!("=== Auto Mode: Ranking by Score ===\n");
 
-        let mut ranked: Vec<(&serde_json::Value, f64)> = active_ideas.iter()
+        let mut ranked: Vec<(&serde_json::Value, f64)> = active_ideas
+            .iter()
             .map(|idea| {
-                let score = idea.get("overall_score")
+                let score = idea
+                    .get("overall_score")
                     .and_then(|s| s.as_f64())
                     .unwrap_or(0.0);
                 (*idea, score)
@@ -658,7 +818,10 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         for (rank, (idea, score)) in ranked.iter().enumerate() {
-            let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
+            let title = idea
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("Unknown");
             let short_title: String = title.chars().take(60).collect();
             println!("{}. [{:.2}] {}", rank + 1, score, short_title);
         }
@@ -679,7 +842,8 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
 
     // Initialize Elo ratings if needed
     {
-        let elo_ratings = preferences.get_mut("elo_ratings")
+        let elo_ratings = preferences
+            .get_mut("elo_ratings")
             .and_then(|e| e.as_object_mut())
             .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
 
@@ -709,12 +873,21 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         let idea_a = active_ideas[i];
         let idea_b = active_ideas[j];
 
-        let id_a = idea_a.get("id").and_then(|i| i.as_str()).unwrap_or("unknown").to_string();
-        let id_b = idea_b.get("id").and_then(|i| i.as_str()).unwrap_or("unknown").to_string();
+        let id_a = idea_a
+            .get("id")
+            .and_then(|i| i.as_str())
+            .unwrap_or("unknown")
+            .to_string();
+        let id_b = idea_b
+            .get("id")
+            .and_then(|i| i.as_str())
+            .unwrap_or("unknown")
+            .to_string();
 
         // Check if we've already compared these
         let already_compared = {
-            let comparisons = preferences.get("comparisons")
+            let comparisons = preferences
+                .get("comparisons")
                 .and_then(|c| c.as_array())
                 .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
             comparisons.iter().any(|c| {
@@ -728,10 +901,22 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
             continue;
         }
 
-        let title_a = idea_a.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
-        let title_b = idea_b.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
-        let score_a = idea_a.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
-        let score_b = idea_b.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+        let title_a = idea_a
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown");
+        let title_b = idea_b
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown");
+        let score_a = idea_a
+            .get("overall_score")
+            .and_then(|s| s.as_f64())
+            .unwrap_or(0.0);
+        let score_b = idea_b
+            .get("overall_score")
+            .and_then(|s| s.as_f64())
+            .unwrap_or(0.0);
 
         println!("--- Comparison {} ---", comparison_count + 1);
         println!();
@@ -749,7 +934,8 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         match choice.as_str() {
             "A" => {
                 {
-                    let comparisons = preferences.get_mut("comparisons")
+                    let comparisons = preferences
+                        .get_mut("comparisons")
                         .and_then(|c| c.as_array_mut())
                         .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
                     comparisons.push(serde_json::json!({
@@ -760,11 +946,15 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
                 }
                 update_elo(&mut preferences, &id_a, &id_b)?;
                 comparison_count += 1;
-                println!("Recorded: {} wins\n", title_a.chars().take(40).collect::<String>());
+                println!(
+                    "Recorded: {} wins\n",
+                    title_a.chars().take(40).collect::<String>()
+                );
             }
             "B" => {
                 {
-                    let comparisons = preferences.get_mut("comparisons")
+                    let comparisons = preferences
+                        .get_mut("comparisons")
                         .and_then(|c| c.as_array_mut())
                         .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
                     comparisons.push(serde_json::json!({
@@ -775,7 +965,10 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
                 }
                 update_elo(&mut preferences, &id_b, &id_a)?;
                 comparison_count += 1;
-                println!("Recorded: {} wins\n", title_b.chars().take(40).collect::<String>());
+                println!(
+                    "Recorded: {} wins\n",
+                    title_b.chars().take(40).collect::<String>()
+                );
             }
             "S" => {
                 println!("Skipped\n");
@@ -790,27 +983,31 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         }
 
         // Save after each comparison
-        fs::write(&preferences_path, serde_json::to_string_pretty(&preferences)?)?;
+        fs::write(
+            &preferences_path,
+            serde_json::to_string_pretty(&preferences)?,
+        )?;
     }
 
     // Show final rankings
     println!("=== Current Rankings (by Elo) ===\n");
 
-    let elo_ratings = preferences.get("elo_ratings")
+    let elo_ratings = preferences
+        .get("elo_ratings")
         .and_then(|e| e.as_object())
         .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
 
-    let mut ranked: Vec<(&str, f64)> = elo_ratings.iter()
-        .filter_map(|(id, rating)| {
-            rating.as_f64().map(|r| (id.as_str(), r))
-        })
+    let mut ranked: Vec<(&str, f64)> = elo_ratings
+        .iter()
+        .filter_map(|(id, rating)| rating.as_f64().map(|r| (id.as_str(), r)))
         .collect();
 
     ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
     for (rank, (id, elo)) in ranked.iter().enumerate() {
         // Find the idea title
-        let title = active_ideas.iter()
+        let title = active_ideas
+            .iter()
             .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(*id))
             .and_then(|idea| idea.get("title").and_then(|t| t.as_str()))
             .unwrap_or("Unknown");
@@ -827,14 +1024,17 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
 fn update_elo(preferences: &mut serde_json::Value, winner_id: &str, loser_id: &str) -> Result<()> {
     let k_factor = 32.0;
 
-    let elo_ratings = preferences.get_mut("elo_ratings")
+    let elo_ratings = preferences
+        .get_mut("elo_ratings")
         .and_then(|e| e.as_object_mut())
         .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
 
-    let winner_elo = elo_ratings.get(winner_id)
+    let winner_elo = elo_ratings
+        .get(winner_id)
         .and_then(|e| e.as_f64())
         .unwrap_or(1000.0);
-    let loser_elo = elo_ratings.get(loser_id)
+    let loser_elo = elo_ratings
+        .get(loser_id)
         .and_then(|e| e.as_f64())
         .unwrap_or(1000.0);
 
@@ -858,18 +1058,24 @@ pub fn profile_export(run_id: &str, output: Option<&str>) -> Result<()> {
     let preferences_path = run_dir.join("preferences.json");
 
     if !preferences_path.exists() {
-        anyhow::bail!("No preferences found for run {}. Run tournament first.", run_id);
+        anyhow::bail!(
+            "No preferences found for run {}. Run tournament first.",
+            run_id
+        );
     }
 
-    let preferences: serde_json::Value = serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
+    let preferences: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
 
     // Extract comparison count and compute derived stats
-    let comparisons = preferences.get("comparisons")
+    let comparisons = preferences
+        .get("comparisons")
         .and_then(|c| c.as_array())
         .map(|c| c.len())
         .unwrap_or(0);
 
-    let elo_ratings = preferences.get("elo_ratings")
+    let elo_ratings = preferences
+        .get("elo_ratings")
         .and_then(|e| e.as_object())
         .map(|e| e.len())
         .unwrap_or(0);
@@ -912,7 +1118,8 @@ pub fn profile_import(file: &str, run_id: &str) -> Result<()> {
     let profile: serde_json::Value = serde_json::from_str(&fs::read_to_string(file)?)?;
 
     // Validate profile format
-    let version = profile.get("version")
+    let version = profile
+        .get("version")
         .and_then(|v| v.as_i64())
         .ok_or_else(|| anyhow::anyhow!("Invalid profile: missing version"))?;
 
@@ -920,14 +1127,19 @@ pub fn profile_import(file: &str, run_id: &str) -> Result<()> {
         anyhow::bail!("Unsupported profile version: {}", version);
     }
 
-    let preferences = profile.get("preferences")
+    let preferences = profile
+        .get("preferences")
         .ok_or_else(|| anyhow::anyhow!("Invalid profile: missing preferences"))?;
 
     // Write preferences to run
     let preferences_path = run_dir.join("preferences.json");
-    fs::write(&preferences_path, serde_json::to_string_pretty(preferences)?)?;
+    fs::write(
+        &preferences_path,
+        serde_json::to_string_pretty(preferences)?,
+    )?;
 
-    let source_run = profile.get("source_run")
+    let source_run = profile
+        .get("source_run")
         .and_then(|s| s.as_str())
         .unwrap_or("unknown");
 
@@ -947,7 +1159,8 @@ pub fn render_tree(run_id: &str, format: &str) -> Result<()> {
     }
 
     let state: serde_json::Value = serde_json::from_str(&fs::read_to_string(&state_path)?)?;
-    let ideas = state.get("ideas")
+    let ideas = state
+        .get("ideas")
         .and_then(|i| i.as_array())
         .ok_or_else(|| anyhow::anyhow!("Invalid state: missing ideas"))?;
 
@@ -957,11 +1170,13 @@ pub fn render_tree(run_id: &str, format: &str) -> Result<()> {
     }
 
     // Build parent -> children map
-    let mut children_map: std::collections::HashMap<String, Vec<&serde_json::Value>> = std::collections::HashMap::new();
+    let mut children_map: std::collections::HashMap<String, Vec<&serde_json::Value>> =
+        std::collections::HashMap::new();
     let mut roots: Vec<&serde_json::Value> = Vec::new();
 
     for idea in ideas {
-        let parents = idea.get("parents")
+        let parents = idea
+            .get("parents")
             .and_then(|p| p.as_array())
             .map(|p| p.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
             .unwrap_or_default();
@@ -970,7 +1185,8 @@ pub fn render_tree(run_id: &str, format: &str) -> Result<()> {
             roots.push(idea);
         } else {
             for parent_id in parents {
-                children_map.entry(parent_id.to_string())
+                children_map
+                    .entry(parent_id.to_string())
                     .or_default()
                     .push(idea);
             }
@@ -979,7 +1195,7 @@ pub fn render_tree(run_id: &str, format: &str) -> Result<()> {
 
     match format {
         "mermaid" => render_mermaid_tree(&roots, &children_map, run_id),
-        "ascii" | _ => render_ascii_tree(&roots, &children_map, run_id),
+        _ => render_ascii_tree(&roots, &children_map, run_id),
     }
 }
 
@@ -1008,8 +1224,14 @@ fn print_idea_node(
     is_last: bool,
 ) {
     let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
-    let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
-    let score = idea.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+    let title = idea
+        .get("title")
+        .and_then(|t| t.as_str())
+        .unwrap_or("Unknown");
+    let score = idea
+        .get("overall_score")
+        .and_then(|s| s.as_f64())
+        .unwrap_or(0.0);
     let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
 
     let status_char = match status {
@@ -1027,7 +1249,10 @@ fn print_idea_node(
         short_title
     };
 
-    println!("{}{}{} [{:.1}] {} {}", prefix, connector, status_char, score, id, title_display);
+    println!(
+        "{}{}{} [{:.1}] {} {}",
+        prefix, connector, status_char, score, id, title_display
+    );
 
     // Print children
     if let Some(children) = children_map.get(id) {
@@ -1046,7 +1271,11 @@ fn render_mermaid_tree(
 ) -> Result<()> {
     println!("```mermaid");
     println!("flowchart TD");
-    println!("    subgraph {}[\"Evolution: {}\"]", run_id.replace('-', "_"), run_id);
+    println!(
+        "    subgraph {}[\"Evolution: {}\"]",
+        run_id.replace('-', "_"),
+        run_id
+    );
 
     // Collect all nodes
     let mut all_ideas: Vec<&serde_json::Value> = roots.to_vec();
@@ -1057,8 +1286,14 @@ fn render_mermaid_tree(
     // Print nodes with styling
     for idea in &all_ideas {
         let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
-        let title = idea.get("title").and_then(|t| t.as_str()).unwrap_or("Unknown");
-        let score = idea.get("overall_score").and_then(|s| s.as_f64()).unwrap_or(0.0);
+        let title = idea
+            .get("title")
+            .and_then(|t| t.as_str())
+            .unwrap_or("Unknown");
+        let score = idea
+            .get("overall_score")
+            .and_then(|s| s.as_f64())
+            .unwrap_or(0.0);
         let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
 
         let short_title: String = title.chars().take(25).collect();
@@ -1110,19 +1345,23 @@ pub fn profile_show(run_id: &str) -> Result<()> {
 
     if !preferences_path.exists() {
         println!("No preferences found for run {}", run_id);
-        println!("Run 'evoidea tournament --run-id {}' to generate preferences", run_id);
+        println!(
+            "Run 'evoidea tournament --run-id {}' to generate preferences",
+            run_id
+        );
         return Ok(());
     }
 
-    let preferences: serde_json::Value = serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
+    let preferences: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
 
-    let comparisons = preferences.get("comparisons")
+    let comparisons = preferences
+        .get("comparisons")
         .and_then(|c| c.as_array())
         .map(|c| c.len())
         .unwrap_or(0);
 
-    let elo_ratings = preferences.get("elo_ratings")
-        .and_then(|e| e.as_object());
+    let elo_ratings = preferences.get("elo_ratings").and_then(|e| e.as_object());
 
     println!("=== Profile for {} ===\n", run_id);
     println!("Comparisons: {}", comparisons);
@@ -1131,10 +1370,9 @@ pub fn profile_show(run_id: &str) -> Result<()> {
         println!("Ideas rated: {}", ratings.len());
         println!("\nElo Rankings:");
 
-        let mut ranked: Vec<(&str, f64)> = ratings.iter()
-            .filter_map(|(id, elo)| {
-                elo.as_f64().map(|e| (id.as_str(), e))
-            })
+        let mut ranked: Vec<(&str, f64)> = ratings
+            .iter()
+            .filter_map(|(id, elo)| elo.as_f64().map(|e| (id.as_str(), e)))
             .collect();
         ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 

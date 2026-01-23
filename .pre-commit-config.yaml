@@ -43,3 +43,10 @@ repos:
         pass_filenames: false
         require_serial: true
         stages: [manual]
+
+      - id: docs-coverage
+        name: check CLI commands documented
+        entry: bash scripts/check_docs_coverage.sh
+        language: system
+        files: ^(src/main\.rs|README\.md)$
+        pass_filenames: false
