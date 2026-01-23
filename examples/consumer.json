@@ -1,0 +1,52 @@
+{
+  "domain": "Consumer Apps",
+  "description": "Apps for individual users - productivity, lifestyle, entertainment",
+  "examples": [
+    {
+      "title": "Habit Tracker with Accountability Partner Matching",
+      "facets": {
+        "audience": "Adults 25-45 trying to build habits (exercise, reading, meditation) who struggle with solo motivation",
+        "jtbd": "Stay consistent with habits through social accountability without the awkwardness of asking friends",
+        "differentiator": "Anonymous matching with similar-goal strangers, daily check-ins, streak competitions",
+        "monetization": "Free basic tracking, $5/mo for premium matching and group challenges",
+        "distribution": "Habit/productivity subreddits, TikTok transformation content, podcast sponsorships"
+      },
+      "why_good": "Evergreen problem (habits are hard), social loop (accountability partners), clear monetization (premium features)",
+      "scores": {
+        "feasibility": 7,
+        "speed_to_value": 6,
+        "differentiation": 5,
+        "market_size": 7,
+        "distribution": 5,
+        "moats": 3,
+        "risk": 5,
+        "clarity": 7
+      },
+      "overall_score": 5.63,
+      "score_rationale": "Moderate feasibility (matching algorithm needs tuning), large market (everyone has habits), but low moats (easy to copy)"
+    },
+    {
+      "title": "Micro-Journal with AI Reflection Prompts",
+      "facets": {
+        "audience": "Busy professionals who want journaling benefits but don't have time for long-form writing",
+        "jtbd": "Get mental clarity in 2 minutes/day with guided micro-prompts that adapt to your mood",
+        "differentiator": "AI learns your patterns and suggests personalized prompts, weekly insight summaries",
+        "monetization": "Free 7-day trial, $4/mo subscription, $40/year annual",
+        "distribution": "Mental health influencers, app store optimization, wellness newsletter sponsorships"
+      },
+      "why_good": "Growing market (mental wellness), low friction (2 min/day), AI angle for personalization",
+      "scores": {
+        "feasibility": 8,
+        "speed_to_value": 8,
+        "differentiation": 4,
+        "market_size": 6,
+        "distribution": 4,
+        "moats": 3,
+        "risk": 6,
+        "clarity": 8
+      },
+      "overall_score": 5.88,
+      "score_rationale": "High feasibility (simple app + LLM prompts), fast value (works day 1), but crowded market (many journal apps)"
+    }
+  ]
+}

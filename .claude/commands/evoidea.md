@@ -26,10 +26,18 @@ Parse from `$ARGUMENTS`:
 - **--no LIST**: Forbidden elements, comma-separated (e.g., `--no crypto,hardware,marketplace`)
 - **--solo**: Ideas must be buildable by solo developer (flag)
 
+### Domain Expertise (optional)
+- **--examples FILE**: Path to JSON file with gold-standard example ideas for few-shot learning
+  - Bundled examples: `examples/devtools.json`, `examples/saas.json`, `examples/consumer.json`
+  - Examples guide GENERATE phase style and CRITIC phase calibration
+
 Example: `/evoidea "Build tools for solo developers" --rounds 3 --population 6`
 
 Example with constraints:
 `/evoidea "Developer tools" --budget 1000 --timeline 4 --skills rust --no crypto,hardware --solo`
+
+Example with domain expertise:
+`/evoidea "Developer productivity tools" --examples examples/devtools.json`
 
 ## Initialization
 
@@ -59,11 +67,13 @@ Example with constraints:
     "must_include": ["api"],
     "forbidden": ["crypto", "hardware"],
     "solo_dev": true
-  }
+  },
+  "examples_file": "examples/devtools.json"
 }
 ```
 
 Note: `constraints` object is optional. Omit or set to `null` if no constraints.
+Note: `examples_file` is optional. If provided, read the file and use for few-shot learning.
 
 ### Initial state.json format
 ```json
@@ -98,6 +108,19 @@ HARD CONSTRAINTS (ideas MUST satisfy ALL of these):
 - Solo developer: {solo_dev ? "Yes, must be buildable alone" : "Team OK"}
 
 Ideas violating ANY constraint will be eliminated. Design within these limits.
+{END IF}
+
+{IF examples_file provided, read the file and add this block:}
+DOMAIN EXPERTISE - Learn from these gold-standard examples:
+
+{For each example in examples file, format as:}
+EXAMPLE: {example.title}
+- Audience: {example.facets.audience}
+- Problem: {example.facets.jtbd}
+- Differentiator: {example.facets.differentiator}
+- Why it's good: {example.why_good}
+
+Use these as style anchors. Match their specificity and depth. Your ideas should be at this quality level.
 {END IF}
 
 For each idea, output valid JSON array with objects containing:
@@ -138,6 +161,17 @@ CONSTRAINT CHECK (check FIRST, before scoring):
 - Solo dev only: {solo_dev}
 
 If an idea violates ANY constraint, set "constraint_violation": true and "violation_reason": "..." in the output. These ideas will be auto-eliminated regardless of scores.
+{END IF}
+
+{IF examples_file provided, add this block:}
+CALIBRATION BENCHMARKS - Use these reference scores:
+
+{For each example in examples file, format as:}
+BENCHMARK: {example.title}
+- Scores: {example.scores} (overall: {example.overall_score})
+- Why these scores: {example.score_rationale}
+
+Calibrate your scoring against these benchmarks. A score of 7+ should indicate quality comparable to these examples.
 {END IF}
 
 CRITERIA (apply in order):

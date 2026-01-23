@@ -1,0 +1,52 @@
+{
+  "domain": "B2B SaaS",
+  "description": "Software-as-a-service for businesses - productivity, operations, analytics",
+  "examples": [
+    {
+      "title": "Meeting Cost Calculator with Live Dashboard",
+      "facets": {
+        "audience": "Engineering managers and finance teams at companies with 50+ employees",
+        "jtbd": "Quantify meeting overhead in dollars to justify calendar audits and async culture",
+        "differentiator": "Real-time dashboard showing meeting costs by team, integrates with HRIS for salary data",
+        "monetization": "$5/employee/mo for analytics, $15/employee for recommendations engine",
+        "distribution": "CFO/VP Eng LinkedIn content, partnership with calendar tools (Calendly, Cal.com)"
+      },
+      "why_good": "Quantifiable ROI (dollars saved), clear buyer (VP Eng/CFO), topical (remote work debate), integration moat",
+      "scores": {
+        "feasibility": 7,
+        "speed_to_value": 6,
+        "differentiation": 6,
+        "market_size": 6,
+        "distribution": 5,
+        "moats": 5,
+        "risk": 6,
+        "clarity": 8
+      },
+      "overall_score": 6.13,
+      "score_rationale": "Moderate feasibility (needs calendar API integrations), good differentiation (cost focus is unique), decent market (all companies have meetings)"
+    },
+    {
+      "title": "Onboarding Checklist Builder with Progress Analytics",
+      "facets": {
+        "audience": "HR teams and people ops at growing startups (20-200 employees)",
+        "jtbd": "Reduce new hire ramp time with structured, trackable onboarding that adapts to role",
+        "differentiator": "Role-specific templates with branching logic, integrates with Slack/Teams for nudges",
+        "monetization": "Free for 10 employees, $8/employee/mo for unlimited with analytics",
+        "distribution": "HR community newsletters, partnership with ATS providers (Lever, Greenhouse)"
+      },
+      "why_good": "Clear pain (onboarding is chaos), specific buyer (HR/People Ops), measurable outcome (time-to-productivity)",
+      "scores": {
+        "feasibility": 8,
+        "speed_to_value": 7,
+        "differentiation": 4,
+        "market_size": 6,
+        "distribution": 5,
+        "moats": 4,
+        "risk": 7,
+        "clarity": 8
+      },
+      "overall_score": 6.13,
+      "score_rationale": "High feasibility (checklist app is straightforward), moderate differentiation (many onboarding tools exist), good clarity"
+    }
+  ]
+}

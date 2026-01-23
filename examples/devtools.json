@@ -1,0 +1,52 @@
+{
+  "domain": "Developer Tools",
+  "description": "Tools for software developers - CLIs, IDEs, testing, deployment",
+  "examples": [
+    {
+      "title": "Linear-style Issue Tracker for Solo Devs",
+      "facets": {
+        "audience": "Solo developers and small teams (1-5) who find Jira overkill",
+        "jtbd": "Track work without context-switching - keyboard-first, git-integrated, local-first",
+        "differentiator": "Stores issues in git repo as markdown, syncs with commits automatically",
+        "monetization": "Free CLI, $8/mo for cloud sync and team features",
+        "distribution": "Dev Twitter, HN Show, integration with popular dotfiles"
+      },
+      "why_good": "Clear niche (solo devs), solves real pain (Jira overhead), unique angle (git-native), viable monetization path",
+      "scores": {
+        "feasibility": 8,
+        "speed_to_value": 8,
+        "differentiation": 7,
+        "market_size": 5,
+        "distribution": 6,
+        "moats": 4,
+        "risk": 7,
+        "clarity": 9
+      },
+      "overall_score": 6.75,
+      "score_rationale": "High feasibility (CLI is straightforward), good differentiation (git-native is unique), moderate market (solo devs is niche but passionate)"
+    },
+    {
+      "title": "AI-Powered Changelog Generator from Git History",
+      "facets": {
+        "audience": "Open source maintainers and dev teams shipping weekly releases",
+        "jtbd": "Generate human-readable changelogs from commit messages without manual curation",
+        "differentiator": "Groups commits by semantic impact, links PRs/issues, suggests version bumps",
+        "monetization": "Free for public repos, $12/mo for private repos with CI integration",
+        "distribution": "GitHub Marketplace, sponsor badges on popular OSS projects"
+      },
+      "why_good": "Clear problem (changelog is tedious), specific audience (OSS maintainers), natural distribution (GitHub ecosystem)",
+      "scores": {
+        "feasibility": 9,
+        "speed_to_value": 9,
+        "differentiation": 5,
+        "market_size": 4,
+        "distribution": 7,
+        "moats": 3,
+        "risk": 8,
+        "clarity": 9
+      },
+      "overall_score": 6.75,
+      "score_rationale": "Very feasible (LLM + git parsing), fast value (works on first run), but low differentiation (many changelog tools exist)"
+    }
+  ]
+}
