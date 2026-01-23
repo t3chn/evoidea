@@ -18,7 +18,18 @@ Parse from `$ARGUMENTS`:
 - **--threshold N**: Score for early stop (default: 9.0)
 - **--resume ID**: Run ID to continue from
 
+### Constraint Arguments (optional)
+- **--budget N**: Max budget in USD (e.g., `--budget 500`)
+- **--timeline N**: Max timeline in weeks (e.g., `--timeline 4`)
+- **--skills LIST**: Required skills, comma-separated (e.g., `--skills rust,python`)
+- **--must LIST**: Required elements, comma-separated (e.g., `--must api,saas`)
+- **--no LIST**: Forbidden elements, comma-separated (e.g., `--no crypto,hardware,marketplace`)
+- **--solo**: Ideas must be buildable by solo developer (flag)
+
 Example: `/evoidea "Build tools for solo developers" --rounds 3 --population 6`
+
+Example with constraints:
+`/evoidea "Developer tools" --budget 1000 --timeline 4 --skills rust --no crypto,hardware --solo`
 
 ## Initialization
 
@@ -40,9 +51,19 @@ Example: `/evoidea "Build tools for solo developers" --rounds 3 --population 6`
   "population_size": 6,
   "elite_count": 2,
   "score_threshold": 9.0,
-  "stagnation_patience": 3
+  "stagnation_patience": 3,
+  "constraints": {
+    "budget_usd": 1000,
+    "timeline_weeks": 4,
+    "required_skills": ["rust"],
+    "must_include": ["api"],
+    "forbidden": ["crypto", "hardware"],
+    "solo_dev": true
+  }
 }
 ```
+
+Note: `constraints` object is optional. Omit or set to `null` if no constraints.
 
 ### Initial state.json format
 ```json
@@ -66,6 +87,18 @@ Use Task tool with `subagent_type: "general-purpose"`:
 
 ```
 Generate {population_size} startup/product ideas for: "{prompt}"
+
+{IF constraints exist, add this block:}
+HARD CONSTRAINTS (ideas MUST satisfy ALL of these):
+- Budget: ${budget_usd} max to build MVP
+- Timeline: {timeline_weeks} weeks max to launch
+- Required skills: {required_skills} (founder has these)
+- Must include: {must_include}
+- FORBIDDEN (never suggest): {forbidden}
+- Solo developer: {solo_dev ? "Yes, must be buildable alone" : "Team OK"}
+
+Ideas violating ANY constraint will be eliminated. Design within these limits.
+{END IF}
 
 For each idea, output valid JSON array with objects containing:
 - id: unique identifier (e.g., "idea-001")
@@ -95,6 +128,18 @@ Use Task tool with `subagent_type: "general-purpose"`:
 ```
 Rate each idea 0-10 on these criteria. Be strict and realistic.
 
+{IF constraints exist, add this block:}
+CONSTRAINT CHECK (check FIRST, before scoring):
+- Budget: ${budget_usd} max
+- Timeline: {timeline_weeks} weeks max
+- Required skills: {required_skills}
+- Must include: {must_include}
+- Forbidden: {forbidden}
+- Solo dev only: {solo_dev}
+
+If an idea violates ANY constraint, set "constraint_violation": true and "violation_reason": "..." in the output. These ideas will be auto-eliminated regardless of scores.
+{END IF}
+
 CRITERIA (apply in order):
 1. feasibility - can a solo dev build MVP in weeks?
 2. speed_to_value - time to first paying customer
@@ -114,12 +159,19 @@ Output JSON object mapping idea IDs to scores:
     "feasibility": 7,
     "speed_to_value": 8,
     ...
+    "constraint_violation": false
   },
-  ...
+  "idea-002": {
+    ...
+    "constraint_violation": true,
+    "violation_reason": "Requires $50k+ infrastructure (exceeds $1000 budget)"
+  }
 }
 ```
 
-For each idea, compute `overall_score` as average of all criteria.
+For each idea:
+1. If `constraint_violation: true`, set `overall_score = 0` and `status = "eliminated"`
+2. Otherwise, compute `overall_score` as average of all criteria
 
 ### Phase 3: SELECT (no LLM)
 
@@ -192,8 +244,10 @@ When stopped:
 {
   "run_id": "...",
   "prompt": "...",
+  "constraints": { ... or null if none },
   "iterations_completed": N,
   "stop_reason": "...",
+  "eliminated_by_constraints": N,
   "best_idea": { full idea object },
   "runner_up": { second best idea or null }
 }
@@ -202,6 +256,10 @@ When stopped:
 2. Present the winning idea to the user in this format:
 
 ---
+{IF constraints exist:}
+**Constraints applied:** budget ${budget_usd}, {timeline_weeks} weeks, skills: {required_skills}, must: {must_include}, no: {forbidden}, solo: {solo_dev}
+{END IF}
+
 ## 🏆 Best Idea: {title}
 
 **Score:** {overall_score}/10
@@ -216,6 +274,7 @@ When stopped:
 
 ### Why it won
 - {reasons based on highest scores}
+- {IF constraints: "Satisfies all constraints"}
 
 ---
 
