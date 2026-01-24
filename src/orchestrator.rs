@@ -762,7 +762,7 @@ fn generate_changelog_entry(
 }
 
 /// Interactive tournament mode for preference learning
-pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
+pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
     let run_dir = PathBuf::from("runs").join(run_id);
     let state_path = run_dir.join("state.json");
 
@@ -855,138 +855,301 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
         }
     }
 
-    // Generate pairs for comparison
-    let mut pairs: Vec<(usize, usize)> = Vec::new();
-    for i in 0..active_ideas.len() {
-        for j in (i + 1)..active_ideas.len() {
-            pairs.push((i, j));
-        }
-    }
-
-    println!("=== Interactive Tournament ===");
-    println!("Compare ideas and pick your preference.");
-    println!("Commands: [A] Choose A | [B] Choose B | [S] Skip | [Q] Quit\n");
-
     let mut comparison_count = 0;
 
-    for (i, j) in pairs {
-        let idea_a = active_ideas[i];
-        let idea_b = active_ideas[j];
+    if pairwise {
+        // Pairwise mode: smart sampling with ~2n comparisons
+        let max_comparisons = calculate_pairwise_limit(active_ideas.len());
 
-        let id_a = idea_a
-            .get("id")
-            .and_then(|i| i.as_str())
-            .unwrap_or("unknown")
-            .to_string();
-        let id_b = idea_b
-            .get("id")
-            .and_then(|i| i.as_str())
-            .unwrap_or("unknown")
-            .to_string();
+        println!("=== Pairwise Comparison Mode ===");
+        println!(
+            "Smart sampling: up to {} comparisons (vs {} for exhaustive)",
+            max_comparisons,
+            active_ideas.len() * (active_ideas.len() - 1) / 2
+        );
+        println!("Pick your preference: [A] or [B]. [S] Skip | [Q] Quit\n");
 
-        // Check if we've already compared these
-        let already_compared = {
-            let comparisons = preferences
-                .get("comparisons")
-                .and_then(|c| c.as_array())
-                .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-            comparisons.iter().any(|c| {
-                let ca = c.get("idea_a").and_then(|a| a.as_str());
-                let cb = c.get("idea_b").and_then(|b| b.as_str());
-                (ca == Some(&id_a) && cb == Some(&id_b)) || (ca == Some(&id_b) && cb == Some(&id_a))
+        // Build data structures for pair selection
+        let ids: Vec<String> = active_ideas
+            .iter()
+            .map(|idea| {
+                idea.get("id")
+                    .and_then(|i| i.as_str())
+                    .unwrap_or("unknown")
+                    .to_string()
             })
-        };
+            .collect();
 
-        if already_compared {
-            continue;
+        // Build compared set from existing comparisons
+        let mut compared: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        if let Some(comps) = preferences.get("comparisons").and_then(|c| c.as_array()) {
+            for c in comps {
+                let id_a = c.get("idea_a").and_then(|a| a.as_str()).unwrap_or("");
+                let id_b = c.get("idea_b").and_then(|b| b.as_str()).unwrap_or("");
+                let pair_key = if id_a < id_b {
+                    (id_a.to_string(), id_b.to_string())
+                } else {
+                    (id_b.to_string(), id_a.to_string())
+                };
+                compared.insert(pair_key);
+            }
         }
 
-        let title_a = idea_a
-            .get("title")
-            .and_then(|t| t.as_str())
-            .unwrap_or("Unknown");
-        let title_b = idea_b
-            .get("title")
-            .and_then(|t| t.as_str())
-            .unwrap_or("Unknown");
-        let score_a = idea_a
-            .get("overall_score")
-            .and_then(|s| s.as_f64())
-            .unwrap_or(0.0);
-        let score_b = idea_b
-            .get("overall_score")
-            .and_then(|s| s.as_f64())
-            .unwrap_or(0.0);
+        while comparison_count < max_comparisons {
+            // Get current Elo ratings
+            let elo_ratings: std::collections::HashMap<String, f64> = preferences
+                .get("elo_ratings")
+                .and_then(|e| e.as_object())
+                .map(|obj| {
+                    obj.iter()
+                        .filter_map(|(k, v)| v.as_f64().map(|r| (k.clone(), r)))
+                        .collect()
+                })
+                .unwrap_or_default();
 
-        println!("--- Comparison {} ---", comparison_count + 1);
-        println!();
-        println!("[A] {} (score: {:.2})", title_a, score_a);
-        println!();
-        println!("[B] {} (score: {:.2})", title_b, score_b);
-        println!();
-        print!("Your choice [A/B/S/Q]: ");
-        io::stdout().flush()?;
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        let choice = input.trim().to_uppercase();
-
-        match choice.as_str() {
-            "A" => {
-                {
-                    let comparisons = preferences
-                        .get_mut("comparisons")
-                        .and_then(|c| c.as_array_mut())
-                        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                    comparisons.push(serde_json::json!({
-                        "idea_a": id_a,
-                        "idea_b": id_b,
-                        "winner": id_a
-                    }));
-                }
-                update_elo(&mut preferences, &id_a, &id_b)?;
-                comparison_count += 1;
-                println!(
-                    "Recorded: {} wins\n",
-                    title_a.chars().take(40).collect::<String>()
-                );
-            }
-            "B" => {
-                {
-                    let comparisons = preferences
-                        .get_mut("comparisons")
-                        .and_then(|c| c.as_array_mut())
-                        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                    comparisons.push(serde_json::json!({
-                        "idea_a": id_a,
-                        "idea_b": id_b,
-                        "winner": id_b
-                    }));
-                }
-                update_elo(&mut preferences, &id_b, &id_a)?;
-                comparison_count += 1;
-                println!(
-                    "Recorded: {} wins\n",
-                    title_b.chars().take(40).collect::<String>()
-                );
-            }
-            "S" => {
-                println!("Skipped\n");
-            }
-            "Q" => {
-                println!("Quitting tournament...\n");
+            // Select next pair
+            let pair = select_next_pair(&ids, &elo_ratings, &compared);
+            if pair.is_none() {
+                println!("All pairs compared!");
                 break;
             }
-            _ => {
-                println!("Invalid choice, skipping\n");
+
+            let (id_a, id_b) = pair.unwrap();
+
+            // Find idea details
+            let idea_a = active_ideas
+                .iter()
+                .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(&id_a))
+                .ok_or_else(|| anyhow::anyhow!("Idea {} not found", id_a))?;
+            let idea_b = active_ideas
+                .iter()
+                .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(&id_b))
+                .ok_or_else(|| anyhow::anyhow!("Idea {} not found", id_b))?;
+
+            let title_a = idea_a
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("Unknown");
+            let title_b = idea_b
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("Unknown");
+            let elo_a = elo_ratings.get(&id_a).unwrap_or(&1000.0);
+            let elo_b = elo_ratings.get(&id_b).unwrap_or(&1000.0);
+
+            println!(
+                "--- Comparison {}/{} ---",
+                comparison_count + 1,
+                max_comparisons
+            );
+            println!();
+            println!("[A] {} (Elo: {:.0})", title_a, elo_a);
+            println!();
+            println!("[B] {} (Elo: {:.0})", title_b, elo_b);
+            println!();
+            print!("Which is better? [A/B/S/Q]: ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let choice = input.trim().to_uppercase();
+
+            // Mark as compared regardless of choice
+            let pair_key = if id_a < id_b {
+                (id_a.clone(), id_b.clone())
+            } else {
+                (id_b.clone(), id_a.clone())
+            };
+
+            match choice.as_str() {
+                "A" => {
+                    compared.insert(pair_key);
+                    {
+                        let comparisons = preferences
+                            .get_mut("comparisons")
+                            .and_then(|c| c.as_array_mut())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                        comparisons.push(serde_json::json!({
+                            "idea_a": id_a,
+                            "idea_b": id_b,
+                            "winner": id_a
+                        }));
+                    }
+                    update_elo(&mut preferences, &id_a, &id_b)?;
+                    comparison_count += 1;
+                    println!("-> {} wins\n", title_a.chars().take(40).collect::<String>());
+                }
+                "B" => {
+                    compared.insert(pair_key);
+                    {
+                        let comparisons = preferences
+                            .get_mut("comparisons")
+                            .and_then(|c| c.as_array_mut())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                        comparisons.push(serde_json::json!({
+                            "idea_a": id_a,
+                            "idea_b": id_b,
+                            "winner": id_b
+                        }));
+                    }
+                    update_elo(&mut preferences, &id_b, &id_a)?;
+                    comparison_count += 1;
+                    println!("-> {} wins\n", title_b.chars().take(40).collect::<String>());
+                }
+                "S" => {
+                    compared.insert(pair_key);
+                    println!("Skipped\n");
+                }
+                "Q" => {
+                    println!("Quitting tournament...\n");
+                    break;
+                }
+                _ => {
+                    println!("Invalid choice, try again\n");
+                    continue;
+                }
+            }
+
+            // Save after each comparison
+            fs::write(
+                &preferences_path,
+                serde_json::to_string_pretty(&preferences)?,
+            )?;
+        }
+    } else {
+        // Original exhaustive mode: compare all pairs
+        let mut pairs: Vec<(usize, usize)> = Vec::new();
+        for i in 0..active_ideas.len() {
+            for j in (i + 1)..active_ideas.len() {
+                pairs.push((i, j));
             }
         }
 
-        // Save after each comparison
-        fs::write(
-            &preferences_path,
-            serde_json::to_string_pretty(&preferences)?,
-        )?;
+        println!("=== Interactive Tournament ===");
+        println!("Compare ideas and pick your preference.");
+        println!("Commands: [A] Choose A | [B] Choose B | [S] Skip | [Q] Quit\n");
+
+        for (i, j) in pairs {
+            let idea_a = active_ideas[i];
+            let idea_b = active_ideas[j];
+
+            let id_a = idea_a
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let id_b = idea_b
+                .get("id")
+                .and_then(|i| i.as_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            // Check if we've already compared these
+            let already_compared = {
+                let comparisons = preferences
+                    .get("comparisons")
+                    .and_then(|c| c.as_array())
+                    .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                comparisons.iter().any(|c| {
+                    let ca = c.get("idea_a").and_then(|a| a.as_str());
+                    let cb = c.get("idea_b").and_then(|b| b.as_str());
+                    (ca == Some(&id_a) && cb == Some(&id_b))
+                        || (ca == Some(&id_b) && cb == Some(&id_a))
+                })
+            };
+
+            if already_compared {
+                continue;
+            }
+
+            let title_a = idea_a
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("Unknown");
+            let title_b = idea_b
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or("Unknown");
+            let score_a = idea_a
+                .get("overall_score")
+                .and_then(|s| s.as_f64())
+                .unwrap_or(0.0);
+            let score_b = idea_b
+                .get("overall_score")
+                .and_then(|s| s.as_f64())
+                .unwrap_or(0.0);
+
+            println!("--- Comparison {} ---", comparison_count + 1);
+            println!();
+            println!("[A] {} (score: {:.2})", title_a, score_a);
+            println!();
+            println!("[B] {} (score: {:.2})", title_b, score_b);
+            println!();
+            print!("Your choice [A/B/S/Q]: ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let choice = input.trim().to_uppercase();
+
+            match choice.as_str() {
+                "A" => {
+                    {
+                        let comparisons = preferences
+                            .get_mut("comparisons")
+                            .and_then(|c| c.as_array_mut())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                        comparisons.push(serde_json::json!({
+                            "idea_a": id_a,
+                            "idea_b": id_b,
+                            "winner": id_a
+                        }));
+                    }
+                    update_elo(&mut preferences, &id_a, &id_b)?;
+                    comparison_count += 1;
+                    println!(
+                        "Recorded: {} wins\n",
+                        title_a.chars().take(40).collect::<String>()
+                    );
+                }
+                "B" => {
+                    {
+                        let comparisons = preferences
+                            .get_mut("comparisons")
+                            .and_then(|c| c.as_array_mut())
+                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+                        comparisons.push(serde_json::json!({
+                            "idea_a": id_a,
+                            "idea_b": id_b,
+                            "winner": id_b
+                        }));
+                    }
+                    update_elo(&mut preferences, &id_b, &id_a)?;
+                    comparison_count += 1;
+                    println!(
+                        "Recorded: {} wins\n",
+                        title_b.chars().take(40).collect::<String>()
+                    );
+                }
+                "S" => {
+                    println!("Skipped\n");
+                }
+                "Q" => {
+                    println!("Quitting tournament...\n");
+                    break;
+                }
+                _ => {
+                    println!("Invalid choice, skipping\n");
+                }
+            }
+
+            // Save after each comparison
+            fs::write(
+                &preferences_path,
+                serde_json::to_string_pretty(&preferences)?,
+            )?;
+        }
     }
 
     // Show final rankings
@@ -1019,6 +1182,54 @@ pub fn tournament(run_id: &str, auto: bool) -> Result<()> {
     println!("Comparisons made: {}", comparison_count);
 
     Ok(())
+}
+
+/// Calculate the maximum number of comparisons for pairwise mode.
+/// Returns approximately 2n comparisons, which is enough to establish a ranking
+/// with the adaptive pair selection algorithm.
+fn calculate_pairwise_limit(n: usize) -> usize {
+    2 * n
+}
+
+/// Select the next best pair to compare for pairwise tournament.
+/// Returns the pair with closest Elo ratings that hasn't been compared yet.
+/// This minimizes comparisons needed to establish ranking (~2n instead of n²).
+fn select_next_pair(
+    ids: &[String],
+    elo_ratings: &std::collections::HashMap<String, f64>,
+    compared: &std::collections::HashSet<(String, String)>,
+) -> Option<(String, String)> {
+    let mut best_pair: Option<(String, String)> = None;
+    let mut smallest_diff = f64::MAX;
+
+    for i in 0..ids.len() {
+        for j in (i + 1)..ids.len() {
+            let id_a = &ids[i];
+            let id_b = &ids[j];
+
+            // Check if already compared (order-independent)
+            let pair_key = if id_a < id_b {
+                (id_a.clone(), id_b.clone())
+            } else {
+                (id_b.clone(), id_a.clone())
+            };
+
+            if compared.contains(&pair_key) {
+                continue;
+            }
+
+            let elo_a = *elo_ratings.get(id_a).unwrap_or(&1000.0);
+            let elo_b = *elo_ratings.get(id_b).unwrap_or(&1000.0);
+            let diff = (elo_a - elo_b).abs();
+
+            if diff < smallest_diff {
+                smallest_diff = diff;
+                best_pair = Some((id_a.clone(), id_b.clone()));
+            }
+        }
+    }
+
+    best_pair
 }
 
 fn update_elo(preferences: &mut serde_json::Value, winner_id: &str, loser_id: &str) -> Result<()> {
@@ -1401,5 +1612,112 @@ mod tests {
     fn test_list_runs_nonexistent_dir() {
         let result = list_runs("/nonexistent/path");
         assert!(result.is_ok()); // Should handle gracefully
+    }
+
+    #[test]
+    fn test_select_next_pair_picks_closest_elo() {
+        // Given 4 items with Elo ratings, should pick the pair with closest ratings
+        let mut elo_ratings = std::collections::HashMap::new();
+        elo_ratings.insert("a".to_string(), 1000.0);
+        elo_ratings.insert("b".to_string(), 1050.0); // closest to a
+        elo_ratings.insert("c".to_string(), 1200.0);
+        elo_ratings.insert("d".to_string(), 1500.0);
+
+        let compared: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        let ids: Vec<String> = vec!["a", "b", "c", "d"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        let pair = select_next_pair(&ids, &elo_ratings, &compared);
+
+        assert!(pair.is_some());
+        let (id1, id2) = pair.unwrap();
+        // Should pick a and b (closest ratings: 50 diff)
+        assert!((id1 == "a" && id2 == "b") || (id1 == "b" && id2 == "a"));
+    }
+
+    #[test]
+    fn test_select_next_pair_skips_already_compared() {
+        let mut elo_ratings = std::collections::HashMap::new();
+        elo_ratings.insert("a".to_string(), 1000.0);
+        elo_ratings.insert("b".to_string(), 1050.0);
+        elo_ratings.insert("c".to_string(), 1100.0);
+
+        // a-b already compared
+        let mut compared: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        compared.insert(("a".to_string(), "b".to_string()));
+
+        let ids: Vec<String> = vec!["a", "b", "c"].into_iter().map(String::from).collect();
+
+        let pair = select_next_pair(&ids, &elo_ratings, &compared);
+
+        assert!(pair.is_some());
+        let (id1, id2) = pair.unwrap();
+        // Should pick b-c (next closest, 50 diff) since a-b is done
+        assert!((id1 == "b" && id2 == "c") || (id1 == "c" && id2 == "b"));
+    }
+
+    #[test]
+    fn test_select_next_pair_returns_none_when_done() {
+        let mut elo_ratings = std::collections::HashMap::new();
+        elo_ratings.insert("a".to_string(), 1000.0);
+        elo_ratings.insert("b".to_string(), 1050.0);
+
+        // Only pair already compared
+        let mut compared: std::collections::HashSet<(String, String)> =
+            std::collections::HashSet::new();
+        compared.insert(("a".to_string(), "b".to_string()));
+
+        let ids: Vec<String> = vec!["a", "b"].into_iter().map(String::from).collect();
+
+        let pair = select_next_pair(&ids, &elo_ratings, &compared);
+
+        assert!(pair.is_none());
+    }
+
+    #[test]
+    fn test_pairwise_elo_updates_after_comparison() {
+        // After a pairwise comparison, Elo ratings should update correctly
+        let mut preferences = serde_json::json!({
+            "comparisons": [],
+            "elo_ratings": {
+                "idea-001": 1000.0,
+                "idea-002": 1000.0
+            }
+        });
+
+        // idea-001 wins
+        update_elo(&mut preferences, "idea-001", "idea-002").unwrap();
+
+        let ratings = preferences.get("elo_ratings").unwrap();
+        let winner_elo = ratings.get("idea-001").unwrap().as_f64().unwrap();
+        let loser_elo = ratings.get("idea-002").unwrap().as_f64().unwrap();
+
+        // Winner should gain, loser should lose
+        assert!(winner_elo > 1000.0);
+        assert!(loser_elo < 1000.0);
+        // Zero-sum: changes should be equal and opposite
+        assert!((winner_elo - 1000.0 + loser_elo - 1000.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_pairwise_comparison_limit_is_reasonable() {
+        // For n items, pairwise mode should need ~2n comparisons to converge
+        // (not the O(n²) of full pairwise)
+        let n = 10;
+        let ids: Vec<String> = (0..n).map(|i| format!("idea-{:03}", i)).collect();
+        let mut elo_ratings = std::collections::HashMap::new();
+        for id in &ids {
+            elo_ratings.insert(id.clone(), 1000.0);
+        }
+
+        let max_comparisons = calculate_pairwise_limit(n);
+
+        // Should be around 2n, definitely less than n*(n-1)/2
+        assert!(max_comparisons <= 3 * n);
+        assert!(max_comparisons < n * (n - 1) / 2);
     }
 }

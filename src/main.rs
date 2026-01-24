@@ -63,6 +63,10 @@ enum Commands {
         /// Use automatic mode (no interaction, scores only)
         #[arg(long)]
         auto: bool,
+
+        /// Use pairwise comparison mode (A/B choices, ~2n comparisons)
+        #[arg(long)]
+        pairwise: bool,
     },
 
     /// Manage preference profiles for scoring calibration
@@ -139,9 +143,13 @@ fn main() -> Result<()> {
             tracing::info!(run_id = %run_id, preset = %preset, "Exporting run");
             orchestrator::export_run(&run_id, &preset)?;
         }
-        Commands::Tournament { run_id, auto } => {
-            tracing::info!(run_id = %run_id, auto = %auto, "Running tournament");
-            orchestrator::tournament(&run_id, auto)?;
+        Commands::Tournament {
+            run_id,
+            auto,
+            pairwise,
+        } => {
+            tracing::info!(run_id = %run_id, auto = %auto, pairwise = %pairwise, "Running tournament");
+            orchestrator::tournament(&run_id, auto, pairwise)?;
         }
         Commands::Profile { action } => match action {
             ProfileAction::Export { run_id, output } => {

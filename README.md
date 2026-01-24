@@ -110,6 +110,7 @@ cargo build --release
 
 # list all runs
 evoidea list
+evoidea list --dir /path/to/runs  # custom runs directory
 
 # show run results
 evoidea show --run-id run-20260123-181141
@@ -126,6 +127,8 @@ evoidea tree --run-id run-20260123-181141 --format mermaid
 
 # interactive tournament (rank ideas by preference)
 evoidea tournament --run-id run-20260123-181141
+evoidea tournament --run-id run-20260123-181141 --pairwise  # smart A/B mode (~2n comparisons)
+evoidea tournament --run-id run-20260123-181141 --auto      # non-interactive, rank by score
 
 # preference profiles (persist tournament calibration)
 evoidea profile show --run-id run-20260123-181141
