@@ -16,10 +16,9 @@ Runs an iterative memetic loop and returns:
 - exactly ONE best idea (concise and practical) plus a score-based rationale
 
 ## Workflow
-1) If the repo has the `evoidea` binary:
-   - Run the materialized script:
-     - see `non_md/codex_skill_scripts/run_evoidea.sh.md`
-2) If the binary is missing:
+1) If the repo has the `evoidea` binary AND it supports the legacy `run` subcommand:
+   - Run the materialized script in `scripts/run_evoidea.sh`.
+2) Otherwise:
    - Do an instruction-only loop:
      - Generate 8–12 ideas
      - Score with rubric

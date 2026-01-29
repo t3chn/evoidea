@@ -51,6 +51,7 @@ Example with a preference profile:
    - Extract weights from `derived.criterion_weights` (preferred) or `criterion_weights`
    - Validate all 8 keys exist: `feasibility`, `speed_to_value`, `differentiation`, `market_size`, `distribution`, `moats`, `risk`, `clarity`
    - Normalize weights so they sum to `1.0`
+   - If the profile is missing/invalid or weights cannot be extracted/validated, warn and fall back to uniform weights (all `1/8`)
 3. If `--resume ID` provided:
    - Read `runs/<ID>/state.json`
    - If `runs/<ID>/config.json` already contains `scoring_weights`, prefer those (resume should be consistent)

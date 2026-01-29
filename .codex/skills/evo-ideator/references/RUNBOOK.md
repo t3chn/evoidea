@@ -5,7 +5,7 @@ Example:
 - `Use the $evo-ideator skill: invent an AI product that can reach $10k/mo quickly; no plan, idea only`
 
 ## If the evoidea binary exists
-The skill should run `run_evoidea.sh` (materialize it from `non_md/`).
+If the `evoidea` binary supports the legacy `run` subcommand, the skill may run `scripts/run_evoidea.sh`.
 
 ## If the binary is missing
 The skill performs an instruction-only loop and still writes artifacts.

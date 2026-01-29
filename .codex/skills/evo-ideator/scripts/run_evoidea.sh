@@ -7,9 +7,18 @@ if [[ -z "${PROMPT}" ]]; then
   exit 1
 fi
 
-# Prefer release if already built; otherwise fallback to cargo run.
 if [[ -x "./target/release/evoidea" ]]; then
-  ./target/release/evoidea run --mode codex --prompt "${PROMPT}"
+  EVOIDEA=(./target/release/evoidea)
 else
-  cargo run -- run --mode codex --prompt "${PROMPT}"
+  EVOIDEA=(cargo run --quiet --)
 fi
+
+# This repo's Rust CLI may not include the legacy `run` subcommand anymore.
+if "${EVOIDEA[@]}" --help | grep -qE '^[[:space:]]+run[[:space:]]'; then
+  "${EVOIDEA[@]}" run --mode codex --prompt "${PROMPT}"
+  exit 0
+fi
+
+echo "error: this repo version does not support \`evoidea run\`." >&2
+echo "hint: use the \`/evoidea\` command to generate run artifacts, then use \`evoidea show|export|tournament|profile\`." >&2
+exit 2
