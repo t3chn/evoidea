@@ -129,6 +129,7 @@ Sources:
 | --elite | 2 | Top-N for refine |
 | --threshold | 9.0 | Score for early stop |
 | --resume | - | Run ID to continue |
+| --discover | - | Ask 5 clarifying questions before generation (interactive) |
 | --profile | - | Preference profile (exported by `evoidea profile export`) |
 
 ## Subagent Prompts

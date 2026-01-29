@@ -4,6 +4,8 @@ use tracing_subscriber::EnvFilter;
 
 mod config;
 mod data;
+#[cfg(test)]
+mod discovery;
 mod orchestrator;
 mod scoring;
 mod storage;

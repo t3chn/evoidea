@@ -14,3 +14,4 @@ The skill performs an instruction-only loop and still writes artifacts.
 - "6 iterations, population 12"
 - "with research"
 - "no plan, best idea only"
+- "`--discover`" (ask 5 clarifying questions before ideation)

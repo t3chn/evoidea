@@ -17,6 +17,7 @@ Parse from `$ARGUMENTS`:
 - **--elite N**: Top ideas to refine (default: 2)
 - **--threshold N**: Score for early stop (default: 9.0)
 - **--resume ID**: Run ID to continue from
+- **--discover**: Ask 5 clarifying questions before generation (interactive)
 - **--profile FILE**: Path to a preference profile JSON exported by `evoidea profile export`
 
 ### Constraint Arguments (optional)
@@ -46,19 +47,40 @@ Example with a preference profile:
 ## Initialization
 
 1. Parse arguments from `$ARGUMENTS`
-2. If `--profile FILE` provided:
+2. If `--resume ID` provided:
+   - Ignore `--discover` (resume uses the existing config + state)
+   - Read `runs/<ID>/state.json`
+   - If `runs/<ID>/config.json` already contains `scoring_weights`, prefer those (resume should be consistent)
+   - If `--profile FILE` is also provided, override `scoring_weights` and rewrite `config.json`
+   - Continue from saved iteration
+3. Otherwise (new run), if `--profile FILE` provided:
    - Read and parse the JSON file
    - Extract weights from `derived.criterion_weights` (preferred) or `criterion_weights`
    - Validate all 8 keys exist: `feasibility`, `speed_to_value`, `differentiation`, `market_size`, `distribution`, `moats`, `risk`, `clarity`
    - Normalize weights so they sum to `1.0`
    - If the profile is missing/invalid or weights cannot be extracted/validated, warn and fall back to uniform weights (all `1/8`)
-3. If `--resume ID` provided:
-   - Read `runs/<ID>/state.json`
-   - If `runs/<ID>/config.json` already contains `scoring_weights`, prefer those (resume should be consistent)
-   - If `--profile FILE` is also provided, override `scoring_weights` and rewrite `config.json`
-   - Continue from saved iteration
-4. Otherwise:
-   - Generate `run_id` using timestamp format: `run-YYYYMMDD-HHMMSS`
+4. Determine `has_explicit_constraints` (true if ANY of these were provided): `--budget`, `--timeline`, `--skills`, `--must`, `--no`, `--solo`.
+5. If `--discover` is provided AND `has_explicit_constraints` is false:
+   - Ask the user these 5 multiple-choice questions (collect all answers before proceeding):
+
+     1) Skills/experience (choose 1+; comma-separated): 1) dev 2) design 3) marketing/growth 4) ai/ml 5) other (type your own)
+     2) Time available to build MVP: 1) 4-8h 2) 10-16h 3) 20h+
+     3) Business model: 1) saas 2) api 3) one-time 4) marketplace
+     4) Target audience: 1) developers 2) business 3) creators 4) freelancers
+     5) Tech approach: 1) llm-based 2) llm-assisted 3) no-llm
+
+   - Create `discovery` object and store it in `config.json` under the `discovery` key.
+   - Map discovery answers to `constraints`:
+     - `timeline_weeks`: 4-8h → 1, 10-16h → 2, 20h+ → 4
+     - `required_skills`: selected skill categories (and user-provided "other" values) as lowercase strings
+     - `must_include`: include the selected business model token plus the audience token
+     - `forbidden`: if tech approach is `no-llm`, add `["llm", "ai"]`; otherwise omit unless user provided `--no`
+   - Do NOT infer `budget_usd` unless user explicitly provided `--budget`
+6. If `--discover` is provided AND `has_explicit_constraints` is true:
+   - Print a short note: discovery skipped because explicit constraint flags were provided
+7. Otherwise:
+   - Use constraints directly from CLI flags (as before)
+8. Generate `run_id` using timestamp format: `run-YYYYMMDD-HHMMSS`
    - Create directory `runs/<run_id>/`
    - Initialize config.json and state.json
 
@@ -67,6 +89,13 @@ Example with a preference profile:
 {
   "run_id": "run-20260123-143022",
   "prompt": "...",
+  "discovery": {
+    "skills": ["dev"],
+    "time_available": "4-8h",
+    "business_model": "saas",
+    "target_audience": "developers",
+    "tech_approach": "llm-assisted"
+  },
   "max_rounds": 3,
   "population_size": 6,
   "elite_count": 2,
@@ -96,6 +125,7 @@ Example with a preference profile:
 ```
 
 Note: `constraints` object is optional. Omit or set to `null` if no constraints.
+Note: `discovery` object is optional. Omit it unless `--discover` is used.
 Note: `examples_file` is optional. If provided, read the file and use for few-shot learning.
 Note: `profile_file` and `scoring_weights` are optional. If missing, use uniform weights.
 

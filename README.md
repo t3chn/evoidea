@@ -98,6 +98,9 @@ claude
 # with constraints
 /evoidea "SaaS for freelancers" --budget 1000 --timeline 4 --solo --no crypto,hardware
 
+# with discovery (interactive pre-flight)
+/evoidea "Developer tools" --discover
+
 # with domain examples (few-shot learning)
 /evoidea "Developer tools" --examples examples/devtools.json
 ```
@@ -147,12 +150,13 @@ evoidea profile import --file prefs.json --run-id run-20260123-181141
 
 **Invocation:**
 ```
-/evoidea "<prompt>" [--rounds N] [--population N] [--elite N] [--threshold N] [--profile FILE]
+/evoidea "<prompt>" [--rounds N] [--population N] [--elite N] [--threshold N] [--discover] [--profile FILE]
 ```
 
 **Constraint flags:**
 | Flag | Description | Example |
 |------|-------------|---------|
+| `--discover` | Ask 5 clarifying questions before generation (auto-populate constraints) | `--discover` |
 | `--budget N` | Max USD for MVP | `--budget 500` |
 | `--timeline N` | Max weeks to launch | `--timeline 4` |
 | `--skills LIST` | Required skills (comma-sep) | `--skills rust,python` |
