@@ -1,4 +1,6 @@
 use anyhow::Result;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use std::fs;
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -1267,6 +1269,7 @@ fn update_elo(preferences: &mut serde_json::Value, winner_id: &str, loser_id: &s
 pub fn profile_export(run_id: &str, output: Option<&str>) -> Result<()> {
     let run_dir = PathBuf::from("runs").join(run_id);
     let preferences_path = run_dir.join("preferences.json");
+    let state_path = run_dir.join("state.json");
 
     if !preferences_path.exists() {
         anyhow::bail!(
@@ -1278,30 +1281,13 @@ pub fn profile_export(run_id: &str, output: Option<&str>) -> Result<()> {
     let preferences: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(&preferences_path)?)?;
 
-    // Extract comparison count and compute derived stats
-    let comparisons = preferences
-        .get("comparisons")
-        .and_then(|c| c.as_array())
-        .map(|c| c.len())
-        .unwrap_or(0);
+    let state: Option<serde_json::Value> = if state_path.exists() {
+        Some(serde_json::from_str(&fs::read_to_string(&state_path)?)?)
+    } else {
+        None
+    };
 
-    let elo_ratings = preferences
-        .get("elo_ratings")
-        .and_then(|e| e.as_object())
-        .map(|e| e.len())
-        .unwrap_or(0);
-
-    // Build portable profile with metadata
-    let profile = serde_json::json!({
-        "version": 1,
-        "created_at": chrono::Utc::now().to_rfc3339(),
-        "source_run": run_id,
-        "stats": {
-            "comparisons": comparisons,
-            "ideas_rated": elo_ratings
-        },
-        "preferences": preferences
-    });
+    let profile = build_portable_profile(run_id, &preferences, state.as_ref());
 
     let json_output = serde_json::to_string_pretty(&profile)?;
 
@@ -1316,6 +1302,384 @@ pub fn profile_export(run_id: &str, output: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn build_portable_profile(
+    run_id: &str,
+    preferences: &serde_json::Value,
+    state: Option<&serde_json::Value>,
+) -> serde_json::Value {
+    // Extract comparison count and compute derived stats
+    let comparisons = preferences
+        .get("comparisons")
+        .and_then(|c| c.as_array())
+        .map(|c| c.len())
+        .unwrap_or(0);
+
+    let elo_ratings = preferences
+        .get("elo_ratings")
+        .and_then(|e| e.as_object())
+        .map(|e| e.len())
+        .unwrap_or(0);
+
+    // Build portable profile with metadata
+    let mut profile = serde_json::json!({
+        "version": 1,
+        "created_at": chrono::Utc::now().to_rfc3339(),
+        "source_run": run_id,
+        "stats": {
+            "comparisons": comparisons,
+            "ideas_rated": elo_ratings
+        },
+        "preferences": preferences
+    });
+
+    if let Some(state) = state {
+        if let Some(derived) = derive_preference_profile(preferences, state) {
+            if let Some(obj) = profile.as_object_mut() {
+                obj.insert("derived".to_string(), derived);
+            }
+        }
+    }
+
+    profile
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum RiskMode {
+    AsBenefit,
+    Invert,
+}
+
+fn infer_risk_mode(state: &serde_json::Value) -> RiskMode {
+    let ideas = state.get("ideas").and_then(|i| i.as_array());
+    let Some(ideas) = ideas else {
+        return RiskMode::AsBenefit;
+    };
+
+    let mut abs_err_benefit = 0.0f64;
+    let mut abs_err_invert = 0.0f64;
+    let mut n = 0u64;
+
+    for idea in ideas {
+        let Some(scores) = extract_scores(idea) else {
+            continue;
+        };
+
+        let Some(overall) = idea.get("overall_score").and_then(|s| s.as_f64()) else {
+            continue;
+        };
+
+        let predicted_benefit = average_score(&scores, RiskMode::AsBenefit);
+        let predicted_invert = average_score(&scores, RiskMode::Invert);
+        abs_err_benefit += (predicted_benefit - overall).abs();
+        abs_err_invert += (predicted_invert - overall).abs();
+        n += 1;
+    }
+
+    // Default to AsBenefit unless we have strong evidence otherwise.
+    if n >= 3 && abs_err_invert + 1e-6 < abs_err_benefit {
+        RiskMode::Invert
+    } else {
+        RiskMode::AsBenefit
+    }
+}
+
+fn average_score(scores: &crate::data::Scores, risk_mode: RiskMode) -> f64 {
+    let mut vals = [
+        scores.feasibility as f64,
+        scores.speed_to_value as f64,
+        scores.differentiation as f64,
+        scores.market_size as f64,
+        scores.distribution as f64,
+        scores.moats as f64,
+        scores.risk as f64,
+        scores.clarity as f64,
+    ];
+
+    if risk_mode == RiskMode::Invert {
+        vals[6] = 10.0 - vals[6];
+    }
+
+    vals.iter().sum::<f64>() / vals.len() as f64
+}
+
+fn derive_preference_profile(
+    preferences: &serde_json::Value,
+    state: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let comparisons = preferences.get("comparisons")?.as_array()?;
+    if comparisons.is_empty() {
+        return None;
+    }
+
+    let risk_mode = infer_risk_mode(state);
+    let scores_by_id = build_scores_by_id(state);
+
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for comp in comparisons {
+        let idea_a = comp.get("idea_a").and_then(|v| v.as_str());
+        let idea_b = comp.get("idea_b").and_then(|v| v.as_str());
+        let winner = comp.get("winner").and_then(|v| v.as_str());
+        let (Some(idea_a), Some(idea_b), Some(winner)) = (idea_a, idea_b, winner) else {
+            continue;
+        };
+
+        let loser = if winner == idea_a {
+            idea_b
+        } else if winner == idea_b {
+            idea_a
+        } else {
+            continue;
+        };
+
+        if scores_by_id.contains_key(winner) && scores_by_id.contains_key(loser) {
+            pairs.push((winner.to_string(), loser.to_string()));
+        }
+    }
+
+    if pairs.is_empty() {
+        return None;
+    }
+
+    let (weights, holdout_accuracy) =
+        fit_criterion_weights_pairwise_mw(&pairs, &scores_by_id, risk_mode, 0.2, 1);
+
+    let summary = summarize_weights(&weights);
+
+    Some(serde_json::json!({
+        "criterion_weights": weights,
+        "fit": {
+            "method": "pairwise-multiplicative-weights",
+            "comparisons_used": pairs.len(),
+            "holdout_accuracy": holdout_accuracy,
+        },
+        "summary": summary,
+    }))
+}
+
+fn build_scores_by_id(
+    state: &serde_json::Value,
+) -> std::collections::HashMap<String, crate::data::Scores> {
+    let mut out = std::collections::HashMap::new();
+    let ideas = state.get("ideas").and_then(|i| i.as_array());
+    let Some(ideas) = ideas else {
+        return out;
+    };
+
+    for idea in ideas {
+        let Some(id) = idea.get("id").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(scores) = extract_scores(idea) else {
+            continue;
+        };
+        out.insert(id.to_string(), scores);
+    }
+
+    out
+}
+
+fn extract_scores(idea: &serde_json::Value) -> Option<crate::data::Scores> {
+    let scores = idea.get("scores")?.as_object()?;
+    Some(crate::data::Scores {
+        feasibility: scores.get("feasibility")?.as_f64()? as f32,
+        speed_to_value: scores.get("speed_to_value")?.as_f64()? as f32,
+        differentiation: scores.get("differentiation")?.as_f64()? as f32,
+        market_size: scores.get("market_size")?.as_f64()? as f32,
+        distribution: scores.get("distribution")?.as_f64()? as f32,
+        moats: scores.get("moats")?.as_f64()? as f32,
+        risk: scores.get("risk")?.as_f64()? as f32,
+        clarity: scores.get("clarity")?.as_f64()? as f32,
+    })
+}
+
+fn summarize_weights(weights: &crate::config::ScoringWeights) -> Vec<String> {
+    let mut items: Vec<(&str, f32)> = vec![
+        ("feasibility", weights.feasibility),
+        ("speed_to_value", weights.speed_to_value),
+        ("differentiation", weights.differentiation),
+        ("market_size", weights.market_size),
+        ("distribution", weights.distribution),
+        ("moats", weights.moats),
+        ("risk", weights.risk),
+        ("clarity", weights.clarity),
+    ];
+    items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    let top: Vec<&str> = items.iter().take(2).map(|(k, _)| *k).collect();
+    let bottom: Vec<&str> = items.iter().rev().take(2).map(|(k, _)| *k).collect();
+
+    let top1 = top.first().copied().unwrap_or("unknown");
+    let top2 = top.get(1).copied().unwrap_or("unknown");
+    let bottom1 = bottom.first().copied().unwrap_or("unknown");
+    let bottom2 = bottom.get(1).copied().unwrap_or("unknown");
+
+    vec![
+        format!("Prioritizes {} and {} over other criteria.", top1, top2),
+        format!(
+            "De-emphasizes {} and {} relative to other criteria.",
+            bottom1, bottom2
+        ),
+    ]
+}
+
+fn fit_criterion_weights_pairwise_mw(
+    pairs: &[(String, String)],
+    scores_by_id: &std::collections::HashMap<String, crate::data::Scores>,
+    risk_mode: RiskMode,
+    holdout_fraction: f64,
+    seed: u64,
+) -> (crate::config::ScoringWeights, Option<f64>) {
+    let mut indices: Vec<usize> = (0..pairs.len()).collect();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    indices.shuffle(&mut rng);
+
+    let test_count = ((pairs.len() as f64) * holdout_fraction).round() as usize;
+    let test_count = test_count.min(pairs.len());
+
+    let (test_idx, train_idx) = indices.split_at(test_count);
+
+    let weights_train =
+        fit_criterion_weights_pairwise_mw_on_indices(pairs, scores_by_id, risk_mode, train_idx);
+
+    let holdout_accuracy = if test_idx.is_empty() {
+        None
+    } else {
+        Some(evaluate_pairwise_accuracy(
+            pairs,
+            scores_by_id,
+            risk_mode,
+            &weights_train,
+            test_idx,
+        ))
+    };
+
+    let weights_all =
+        fit_criterion_weights_pairwise_mw_on_indices(pairs, scores_by_id, risk_mode, &indices);
+
+    (weights_all, holdout_accuracy)
+}
+
+fn fit_criterion_weights_pairwise_mw_on_indices(
+    pairs: &[(String, String)],
+    scores_by_id: &std::collections::HashMap<String, crate::data::Scores>,
+    risk_mode: RiskMode,
+    indices: &[usize],
+) -> crate::config::ScoringWeights {
+    // Start from a uniform, positive prior.
+    let mut w = [1.0f64; 8];
+    let lr = 0.05f64;
+    let clamp_min = 0.1f64;
+    let clamp_max = 10.0f64;
+
+    for &idx in indices {
+        let (winner_id, loser_id) = &pairs[idx];
+        let (Some(winner), Some(loser)) = (scores_by_id.get(winner_id), scores_by_id.get(loser_id))
+        else {
+            continue;
+        };
+
+        let f_w = scores_to_features(winner, risk_mode);
+        let f_l = scores_to_features(loser, risk_mode);
+
+        for i in 0..w.len() {
+            let delta = f_w[i] - f_l[i];
+            w[i] *= (lr * delta).exp();
+            w[i] = w[i].clamp(clamp_min, clamp_max);
+        }
+
+        normalize_in_place(&mut w);
+    }
+
+    crate::config::ScoringWeights {
+        feasibility: w[0] as f32,
+        speed_to_value: w[1] as f32,
+        differentiation: w[2] as f32,
+        market_size: w[3] as f32,
+        distribution: w[4] as f32,
+        moats: w[5] as f32,
+        risk: w[6] as f32,
+        clarity: w[7] as f32,
+    }
+}
+
+fn evaluate_pairwise_accuracy(
+    pairs: &[(String, String)],
+    scores_by_id: &std::collections::HashMap<String, crate::data::Scores>,
+    risk_mode: RiskMode,
+    weights: &crate::config::ScoringWeights,
+    indices: &[usize],
+) -> f64 {
+    let w = [
+        weights.feasibility as f64,
+        weights.speed_to_value as f64,
+        weights.differentiation as f64,
+        weights.market_size as f64,
+        weights.distribution as f64,
+        weights.moats as f64,
+        weights.risk as f64,
+        weights.clarity as f64,
+    ];
+
+    let mut correct = 0u64;
+    let mut total = 0u64;
+
+    for &idx in indices {
+        let (winner_id, loser_id) = &pairs[idx];
+        let (Some(winner), Some(loser)) = (scores_by_id.get(winner_id), scores_by_id.get(loser_id))
+        else {
+            continue;
+        };
+
+        let f_w = scores_to_features(winner, risk_mode);
+        let f_l = scores_to_features(loser, risk_mode);
+        let delta = dot(&w, &f_w) - dot(&w, &f_l);
+
+        total += 1;
+        if delta >= 0.0 {
+            correct += 1;
+        }
+    }
+
+    if total == 0 {
+        0.0
+    } else {
+        (correct as f64) / (total as f64)
+    }
+}
+
+fn normalize_in_place(w: &mut [f64; 8]) {
+    let sum = w.iter().sum::<f64>();
+    if sum <= 0.0 {
+        *w = [1.0 / 8.0; 8];
+        return;
+    }
+    for wi in w.iter_mut() {
+        *wi /= sum;
+    }
+}
+
+fn scores_to_features(scores: &crate::data::Scores, risk_mode: RiskMode) -> [f64; 8] {
+    let risk = match risk_mode {
+        RiskMode::AsBenefit => scores.risk as f64,
+        RiskMode::Invert => 10.0 - (scores.risk as f64),
+    };
+
+    [
+        scores.feasibility as f64,
+        scores.speed_to_value as f64,
+        scores.differentiation as f64,
+        scores.market_size as f64,
+        scores.distribution as f64,
+        scores.moats as f64,
+        risk,
+        scores.clarity as f64,
+    ]
+}
+
+fn dot(w: &[f64; 8], f: &[f64; 8]) -> f64 {
+    w.iter().zip(f.iter()).map(|(a, b)| a * b).sum()
 }
 
 /// Import a profile into a run
@@ -1719,5 +2083,86 @@ mod tests {
         // Should be around 2n, definitely less than n*(n-1)/2
         assert!(max_comparisons <= 3 * n);
         assert!(max_comparisons < n * (n - 1) / 2);
+    }
+
+    #[test]
+    fn test_derive_preference_profile_returns_none_without_comparisons() {
+        let preferences = serde_json::json!({
+            "comparisons": [],
+            "elo_ratings": {}
+        });
+
+        let state = serde_json::json!({
+            "ideas": []
+        });
+
+        let derived = derive_preference_profile(&preferences, &state);
+        assert!(derived.is_none());
+    }
+
+    #[test]
+    fn test_derive_preference_profile_learns_risk_weight_when_risk_is_benefit() {
+        // In current run artifacts, higher "risk" score means safer (benefit) and contributes
+        // positively to overall_score (i.e., no inversion). This test ensures we infer that mode
+        // and learn a higher weight for risk when the user consistently prefers the safer idea.
+        let state = serde_json::json!({
+            "ideas": [
+                {
+                    "id": "safe",
+                    "scores": {"feasibility": 5, "speed_to_value": 5, "differentiation": 5, "market_size": 5, "distribution": 5, "moats": 5, "risk": 9, "clarity": 5},
+                    "overall_score": 5.5
+                },
+                {
+                    "id": "risky",
+                    "scores": {"feasibility": 5, "speed_to_value": 5, "differentiation": 5, "market_size": 5, "distribution": 5, "moats": 5, "risk": 1, "clarity": 5},
+                    "overall_score": 4.5
+                }
+            ]
+        });
+
+        let preferences = serde_json::json!({
+            "comparisons": [
+                { "idea_a": "safe", "idea_b": "risky", "winner": "safe" }
+            ],
+            "elo_ratings": {}
+        });
+
+        let derived = derive_preference_profile(&preferences, &state).expect("derived");
+        let weights = derived.get("criterion_weights").expect("criterion_weights");
+        let risk = weights.get("risk").and_then(|v| v.as_f64()).unwrap();
+        let feasibility = weights.get("feasibility").and_then(|v| v.as_f64()).unwrap();
+
+        assert!(risk > feasibility);
+
+        // Weights should be normalized to sum ~= 1.
+        let sum: f64 = [
+            "feasibility",
+            "speed_to_value",
+            "differentiation",
+            "market_size",
+            "distribution",
+            "moats",
+            "risk",
+            "clarity",
+        ]
+        .iter()
+        .map(|k| weights.get(*k).and_then(|v| v.as_f64()).unwrap())
+        .sum();
+        assert!((sum - 1.0).abs() < 1e-6);
+
+        let fit = derived.get("fit").expect("fit");
+        assert_eq!(
+            fit.get("method").and_then(|v| v.as_str()).unwrap(),
+            "pairwise-multiplicative-weights"
+        );
+        assert_eq!(
+            fit.get("comparisons_used")
+                .and_then(|v| v.as_u64())
+                .unwrap(),
+            1
+        );
+
+        let summary = derived.get("summary").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(summary.len(), 2);
     }
 }
