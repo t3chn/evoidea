@@ -777,7 +777,7 @@ fn generate_changelog_entry(
 }
 
 /// Interactive tournament mode for preference learning
-pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
+pub fn tournament(run_id: &str, auto: bool, pairwise: bool, rationale: bool) -> Result<()> {
     let run_dir = PathBuf::from("runs").join(run_id);
     let state_path = run_dir.join("state.json");
 
@@ -895,7 +895,11 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
             max_comparisons,
             eligible_ideas.len() * (eligible_ideas.len() - 1) / 2
         );
-        println!("Pick your preference: [A] or [B]. [S] Skip | [Q] Quit\n");
+        println!("Pick your preference: [A] or [B]. [S] Skip | [Q] Quit");
+        if rationale {
+            println!("Then optionally add a rationale (free-text).");
+        }
+        println!();
 
         // Build data structures for pair selection
         let ids: Vec<String> = eligible_ideas
@@ -993,34 +997,16 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
             match choice.as_str() {
                 "A" => {
                     compared.insert(pair_key);
-                    {
-                        let comparisons = preferences
-                            .get_mut("comparisons")
-                            .and_then(|c| c.as_array_mut())
-                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                        comparisons.push(serde_json::json!({
-                            "idea_a": id_a,
-                            "idea_b": id_b,
-                            "winner": id_a
-                        }));
-                    }
+                    let r = read_optional_rationale(rationale)?;
+                    append_comparison(&mut preferences, &id_a, &id_b, &id_a, r.as_deref())?;
                     update_elo(&mut preferences, &id_a, &id_b)?;
                     comparison_count += 1;
                     println!("-> {} wins\n", title_a.chars().take(40).collect::<String>());
                 }
                 "B" => {
                     compared.insert(pair_key);
-                    {
-                        let comparisons = preferences
-                            .get_mut("comparisons")
-                            .and_then(|c| c.as_array_mut())
-                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                        comparisons.push(serde_json::json!({
-                            "idea_a": id_a,
-                            "idea_b": id_b,
-                            "winner": id_b
-                        }));
-                    }
+                    let r = read_optional_rationale(rationale)?;
+                    append_comparison(&mut preferences, &id_a, &id_b, &id_b, r.as_deref())?;
                     update_elo(&mut preferences, &id_b, &id_a)?;
                     comparison_count += 1;
                     println!("-> {} wins\n", title_b.chars().take(40).collect::<String>());
@@ -1123,17 +1109,8 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
 
             match choice.as_str() {
                 "A" => {
-                    {
-                        let comparisons = preferences
-                            .get_mut("comparisons")
-                            .and_then(|c| c.as_array_mut())
-                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                        comparisons.push(serde_json::json!({
-                            "idea_a": id_a,
-                            "idea_b": id_b,
-                            "winner": id_a
-                        }));
-                    }
+                    let r = read_optional_rationale(rationale)?;
+                    append_comparison(&mut preferences, &id_a, &id_b, &id_a, r.as_deref())?;
                     update_elo(&mut preferences, &id_a, &id_b)?;
                     comparison_count += 1;
                     println!(
@@ -1142,17 +1119,8 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
                     );
                 }
                 "B" => {
-                    {
-                        let comparisons = preferences
-                            .get_mut("comparisons")
-                            .and_then(|c| c.as_array_mut())
-                            .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
-                        comparisons.push(serde_json::json!({
-                            "idea_a": id_a,
-                            "idea_b": id_b,
-                            "winner": id_b
-                        }));
-                    }
+                    let r = read_optional_rationale(rationale)?;
+                    append_comparison(&mut preferences, &id_a, &id_b, &id_b, r.as_deref())?;
                     update_elo(&mut preferences, &id_b, &id_a)?;
                     comparison_count += 1;
                     println!(
@@ -1215,6 +1183,52 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
     println!("\nPreferences saved to: {}", preferences_path.display());
     println!("Comparisons made: {}", comparison_count);
 
+    Ok(())
+}
+
+fn read_optional_rationale(enabled: bool) -> Result<Option<String>> {
+    if !enabled {
+        return Ok(None);
+    }
+
+    print!("Rationale (optional, Enter to skip): ");
+    io::stdout().flush()?;
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    let input = input.trim();
+    if input.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(input.to_string()))
+    }
+}
+
+fn append_comparison(
+    preferences: &mut serde_json::Value,
+    idea_a: &str,
+    idea_b: &str,
+    winner: &str,
+    rationale: Option<&str>,
+) -> Result<()> {
+    let comparisons = preferences
+        .get_mut("comparisons")
+        .and_then(|c| c.as_array_mut())
+        .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
+
+    let mut record = serde_json::json!({
+        "idea_a": idea_a,
+        "idea_b": idea_b,
+        "winner": winner
+    });
+
+    if let Some(rationale) = rationale {
+        let trimmed = rationale.trim();
+        if !trimmed.is_empty() {
+            record["rationale"] = serde_json::Value::String(trimmed.to_string());
+        }
+    }
+
+    comparisons.push(record);
     Ok(())
 }
 
@@ -2242,5 +2256,46 @@ mod tests {
 
         let errors = validate_state_idea_invariants(&state);
         assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_append_comparison_includes_rationale_when_provided() {
+        let mut preferences = serde_json::json!({
+            "comparisons": [],
+            "elo_ratings": {}
+        });
+
+        append_comparison(&mut preferences, "a", "b", "a", Some("because")).unwrap();
+
+        let comparisons = preferences
+            .get("comparisons")
+            .and_then(|c| c.as_array())
+            .unwrap();
+
+        assert_eq!(comparisons.len(), 1);
+        assert_eq!(
+            comparisons[0].get("rationale").and_then(|v| v.as_str()),
+            Some("because")
+        );
+    }
+
+    #[test]
+    fn test_append_comparison_omits_rationale_when_none_or_empty() {
+        let mut preferences = serde_json::json!({
+            "comparisons": [],
+            "elo_ratings": {}
+        });
+
+        append_comparison(&mut preferences, "a", "b", "a", None).unwrap();
+        append_comparison(&mut preferences, "a", "b", "b", Some("   ")).unwrap();
+
+        let comparisons = preferences
+            .get("comparisons")
+            .and_then(|c| c.as_array())
+            .unwrap();
+
+        assert_eq!(comparisons.len(), 2);
+        assert!(comparisons[0].get("rationale").is_none());
+        assert!(comparisons[1].get("rationale").is_none());
     }
 }

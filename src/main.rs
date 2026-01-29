@@ -67,6 +67,10 @@ enum Commands {
         /// Use pairwise comparison mode (A/B choices, ~2n comparisons)
         #[arg(long)]
         pairwise: bool,
+
+        /// Ask for an optional rationale after each choice
+        #[arg(long)]
+        rationale: bool,
     },
 
     /// Manage preference profiles for scoring calibration
@@ -147,9 +151,10 @@ fn main() -> Result<()> {
             run_id,
             auto,
             pairwise,
+            rationale,
         } => {
-            tracing::info!(run_id = %run_id, auto = %auto, pairwise = %pairwise, "Running tournament");
-            orchestrator::tournament(&run_id, auto, pairwise)?;
+            tracing::info!(run_id = %run_id, auto = %auto, pairwise = %pairwise, rationale = %rationale, "Running tournament");
+            orchestrator::tournament(&run_id, auto, pairwise, rationale)?;
         }
         Commands::Profile { action } => match action {
             ProfileAction::Export { run_id, output } => {

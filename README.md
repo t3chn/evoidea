@@ -128,6 +128,7 @@ evoidea tree --run-id run-20260123-181141 --format mermaid
 # interactive tournament (rank ideas by preference)
 evoidea tournament --run-id run-20260123-181141
 evoidea tournament --run-id run-20260123-181141 --pairwise  # smart A/B mode (~2n comparisons)
+evoidea tournament --run-id run-20260123-181141 --pairwise --rationale  # optionally capture "why" for each choice
 evoidea tournament --run-id run-20260123-181141 --auto      # non-interactive, rank by score
 
 # preference profiles (persist tournament calibration)
