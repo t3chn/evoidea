@@ -203,55 +203,23 @@ pub fn validate_run(run_id: &str) -> Result<()> {
     let state_path = run_dir.join("state.json");
     if state_path.exists() {
         match fs::read_to_string(&state_path) {
-            Ok(content) => {
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(state) => {
-                        let iteration =
-                            state.get("iteration").and_then(|i| i.as_u64()).unwrap_or(0);
-                        let ideas_count = state
-                            .get("ideas")
-                            .and_then(|i| i.as_array())
-                            .map(|a| a.len())
-                            .unwrap_or(0);
-                        println!(
-                            "State: OK (iteration: {}, ideas: {})",
-                            iteration, ideas_count
-                        );
+            Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(state) => {
+                    let iteration = state.get("iteration").and_then(|i| i.as_u64()).unwrap_or(0);
+                    let ideas_count = state
+                        .get("ideas")
+                        .and_then(|i| i.as_array())
+                        .map(|a| a.len())
+                        .unwrap_or(0);
+                    println!(
+                        "State: OK (iteration: {}, ideas: {})",
+                        iteration, ideas_count
+                    );
 
-                        // Validate idea invariants
-                        if let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) {
-                            for idea in ideas {
-                                let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
-                                let origin =
-                                    idea.get("origin").and_then(|o| o.as_str()).unwrap_or("?");
-                                let parents = idea.get("parents").and_then(|p| p.as_array());
-                                let has_parents = parents.map(|p| !p.is_empty()).unwrap_or(false);
-
-                                match origin {
-                                    "generated" => {
-                                        if has_parents {
-                                            errors.push(format!(
-                                                "Idea {} (generated) has parents",
-                                                id
-                                            ));
-                                        }
-                                    }
-                                    "refined" | "crossover" | "mutated" => {
-                                        if !has_parents {
-                                            errors.push(format!(
-                                                "Idea {} ({}) has no parents",
-                                                id, origin
-                                            ));
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => errors.push(format!("State JSON invalid: {}", e)),
+                    errors.extend(validate_state_idea_invariants(&state));
                 }
-            }
+                Err(e) => errors.push(format!("State JSON invalid: {}", e)),
+            },
             Err(e) => errors.push(format!("State read error: {}", e)),
         }
     } else {
@@ -304,6 +272,51 @@ pub fn validate_run(run_id: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn validate_state_idea_invariants(state: &serde_json::Value) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    let Some(ideas) = state.get("ideas").and_then(|i| i.as_array()) else {
+        return errors;
+    };
+
+    for idea in ideas {
+        let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("?");
+        let origin = idea.get("origin").and_then(|o| o.as_str()).unwrap_or("?");
+        let parents = idea.get("parents").and_then(|p| p.as_array());
+        let has_parents = parents.map(|p| !p.is_empty()).unwrap_or(false);
+        let status = idea.get("status").and_then(|s| s.as_str()).unwrap_or("?");
+
+        match origin {
+            "generated" => {
+                if has_parents {
+                    errors.push(format!("Idea {} (generated) has parents", id));
+                }
+            }
+            "refined" | "crossover" | "mutated" => {
+                if !has_parents {
+                    errors.push(format!("Idea {} ({}) has no parents", id, origin));
+                }
+            }
+            _ => {}
+        }
+
+        // Active ideas should always be scored (tournament/profile export depends on it).
+        if status == "active" {
+            if extract_scores(idea).is_none() {
+                errors.push(format!("Idea {} (active) has missing/invalid scores", id));
+            }
+            if idea.get("overall_score").and_then(|s| s.as_f64()).is_none() {
+                errors.push(format!(
+                    "Idea {} (active) has missing/invalid overall_score",
+                    id
+                ));
+            }
+        }
+    }
+
+    errors
 }
 
 /// Export run results in various preset formats
@@ -791,22 +804,35 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
         })
         .collect();
 
-    if active_ideas.len() < 2 {
+    let eligible_ideas: Vec<&serde_json::Value> = active_ideas
+        .iter()
+        .copied()
+        .filter(|idea| idea_has_complete_scores(idea))
+        .collect();
+
+    if eligible_ideas.len() < 2 {
         anyhow::bail!(
-            "Need at least 2 active ideas for tournament (found {})",
+            "Need at least 2 scored active ideas for tournament (found {} scored of {} active).",
+            eligible_ideas.len(),
             active_ideas.len()
         );
     }
 
     println!("Tournament Mode for run: {}", run_id);
     println!("Active ideas: {}", active_ideas.len());
+    if eligible_ideas.len() != active_ideas.len() {
+        println!(
+            "Warning: {} active ideas have missing scores and were excluded.",
+            active_ideas.len() - eligible_ideas.len()
+        );
+    }
     println!();
 
     if auto {
         // Auto mode: just show ranking by score
         println!("=== Auto Mode: Ranking by Score ===\n");
 
-        let mut ranked: Vec<(&serde_json::Value, f64)> = active_ideas
+        let mut ranked: Vec<(&serde_json::Value, f64)> = eligible_ideas
             .iter()
             .map(|idea| {
                 let score = idea
@@ -849,7 +875,7 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
             .and_then(|e| e.as_object_mut())
             .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
 
-        for idea in &active_ideas {
+        for idea in &eligible_ideas {
             let id = idea.get("id").and_then(|i| i.as_str()).unwrap_or("unknown");
             if !elo_ratings.contains_key(id) {
                 elo_ratings.insert(id.to_string(), serde_json::json!(1000.0));
@@ -861,18 +887,18 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
 
     if pairwise {
         // Pairwise mode: smart sampling with ~2n comparisons
-        let max_comparisons = calculate_pairwise_limit(active_ideas.len());
+        let max_comparisons = calculate_pairwise_limit(eligible_ideas.len());
 
         println!("=== Pairwise Comparison Mode ===");
         println!(
             "Smart sampling: up to {} comparisons (vs {} for exhaustive)",
             max_comparisons,
-            active_ideas.len() * (active_ideas.len() - 1) / 2
+            eligible_ideas.len() * (eligible_ideas.len() - 1) / 2
         );
         println!("Pick your preference: [A] or [B]. [S] Skip | [Q] Quit\n");
 
         // Build data structures for pair selection
-        let ids: Vec<String> = active_ideas
+        let ids: Vec<String> = eligible_ideas
             .iter()
             .map(|idea| {
                 idea.get("id")
@@ -920,11 +946,11 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
             let (id_a, id_b) = pair.unwrap();
 
             // Find idea details
-            let idea_a = active_ideas
+            let idea_a = eligible_ideas
                 .iter()
                 .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(&id_a))
                 .ok_or_else(|| anyhow::anyhow!("Idea {} not found", id_a))?;
-            let idea_b = active_ideas
+            let idea_b = eligible_ideas
                 .iter()
                 .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(&id_b))
                 .ok_or_else(|| anyhow::anyhow!("Idea {} not found", id_b))?;
@@ -1022,8 +1048,8 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
     } else {
         // Original exhaustive mode: compare all pairs
         let mut pairs: Vec<(usize, usize)> = Vec::new();
-        for i in 0..active_ideas.len() {
-            for j in (i + 1)..active_ideas.len() {
+        for i in 0..eligible_ideas.len() {
+            for j in (i + 1)..eligible_ideas.len() {
                 pairs.push((i, j));
             }
         }
@@ -1033,8 +1059,8 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
         println!("Commands: [A] Choose A | [B] Choose B | [S] Skip | [Q] Quit\n");
 
         for (i, j) in pairs {
-            let idea_a = active_ideas[i];
-            let idea_b = active_ideas[j];
+            let idea_a = eligible_ideas[i];
+            let idea_b = eligible_ideas[j];
 
             let id_a = idea_a
                 .get("id")
@@ -1162,8 +1188,14 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
         .and_then(|e| e.as_object())
         .ok_or_else(|| anyhow::anyhow!("Invalid preferences format"))?;
 
+    let eligible_ids: std::collections::HashSet<&str> = eligible_ideas
+        .iter()
+        .filter_map(|idea| idea.get("id").and_then(|i| i.as_str()))
+        .collect();
+
     let mut ranked: Vec<(&str, f64)> = elo_ratings
         .iter()
+        .filter(|(id, _)| eligible_ids.contains(id.as_str()))
         .filter_map(|(id, rating)| rating.as_f64().map(|r| (id.as_str(), r)))
         .collect();
 
@@ -1171,7 +1203,7 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
 
     for (rank, (id, elo)) in ranked.iter().enumerate() {
         // Find the idea title
-        let title = active_ideas
+        let title = eligible_ideas
             .iter()
             .find(|idea| idea.get("id").and_then(|i| i.as_str()) == Some(*id))
             .and_then(|idea| idea.get("title").and_then(|t| t.as_str()))
@@ -1184,6 +1216,13 @@ pub fn tournament(run_id: &str, auto: bool, pairwise: bool) -> Result<()> {
     println!("Comparisons made: {}", comparison_count);
 
     Ok(())
+}
+
+fn idea_has_complete_scores(idea: &serde_json::Value) -> bool {
+    if idea.get("overall_score").and_then(|s| s.as_f64()).is_none() {
+        return false;
+    }
+    extract_scores(idea).is_some()
 }
 
 /// Calculate the maximum number of comparisons for pairwise mode.
@@ -2164,5 +2203,44 @@ mod tests {
 
         let summary = derived.get("summary").and_then(|v| v.as_array()).unwrap();
         assert_eq!(summary.len(), 2);
+    }
+
+    #[test]
+    fn test_validate_state_invariants_flags_unscored_active_ideas() {
+        let state = serde_json::json!({
+            "ideas": [
+                {
+                    "id": "idea-1",
+                    "origin": "refined",
+                    "parents": ["idea-0"],
+                    "status": "active"
+                }
+            ]
+        });
+
+        let errors = validate_state_idea_invariants(&state);
+        assert!(errors.iter().any(|e| e.contains("missing/invalid scores")));
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("missing/invalid overall_score")));
+    }
+
+    #[test]
+    fn test_validate_state_invariants_accepts_scored_active_ideas() {
+        let state = serde_json::json!({
+            "ideas": [
+                {
+                    "id": "idea-1",
+                    "origin": "generated",
+                    "parents": [],
+                    "status": "active",
+                    "scores": {"feasibility": 5, "speed_to_value": 5, "differentiation": 5, "market_size": 5, "distribution": 5, "moats": 5, "risk": 5, "clarity": 5},
+                    "overall_score": 5.0
+                }
+            ]
+        });
+
+        let errors = validate_state_idea_invariants(&state);
+        assert!(errors.is_empty());
     }
 }

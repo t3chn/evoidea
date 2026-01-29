@@ -288,6 +288,21 @@ Add refined ideas to state.ideas with:
 
 Archive the original ideas that were refined.
 
+### Phase 4.5: RE-SCORE REFINED IDEAS (required)
+
+Reason: Tournament and preference-learning require rubric scores for the *active* ideas.
+
+After REFINE, run CRITIC again on the current active set (which now includes refined ideas).
+
+Use the same CRITIC prompt as Phase 2, but evaluate only the active ideas (including refined), then:
+
+For each active idea:
+1. If `constraint_violation: true`, set `overall_score = 0` and `status = "eliminated"`
+2. Otherwise, set `scores = {…}` and compute `overall_score` using the same weighted sum formula
+3. Store a short `judge_notes` string explaining the score highlights and weaknesses
+
+Update `best_idea_id` and `best_score` after re-scoring.
+
 ### Phase 5: COMPRESS
 
 After each iteration:
