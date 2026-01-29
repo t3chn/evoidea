@@ -146,7 +146,7 @@ evoidea profile import --file prefs.json --run-id run-20260123-181141
 
 **Invocation:**
 ```
-/evoidea "<prompt>" [--rounds N] [--population N] [--elite N] [--threshold N]
+/evoidea "<prompt>" [--rounds N] [--population N] [--elite N] [--threshold N] [--profile FILE]
 ```
 
 **Constraint flags:**
@@ -160,6 +160,7 @@ evoidea profile import --file prefs.json --run-id run-20260123-181141
 | `--solo` | Solo dev constraint (flag) | `--solo` |
 | `--resume ID` | Continue from run | `--resume run-20260123-181141` |
 | `--examples FILE` | Domain examples for few-shot | `--examples examples/devtools.json` |
+| `--profile FILE` | Preference profile (from `evoidea profile export`) | `--profile prefs.json` |
 
 **Evolution phases:**
 
@@ -274,7 +275,7 @@ evoidea validate --run-id <run_id>
 - Evolution runs are stored in `runs/` (gitignored by default)
 - The skill uses Claude Code's Task tool to parallelize refinement
 - Constraints are optional but recommended for realistic ideas
-- Tournament mode helps calibrate your preferences for future runs
+- Tournament mode helps calibrate your preferences for future runs (export a profile and pass it via `--profile`)
 - Bundled examples: `examples/devtools.json`, `examples/saas.json`, `examples/consumer.json`
 
 </details>

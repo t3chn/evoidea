@@ -17,6 +17,7 @@ Parse from `$ARGUMENTS`:
 - **--elite N**: Top ideas to refine (default: 2)
 - **--threshold N**: Score for early stop (default: 9.0)
 - **--resume ID**: Run ID to continue from
+- **--profile FILE**: Path to a preference profile JSON exported by `evoidea profile export`
 
 ### Constraint Arguments (optional)
 - **--budget N**: Max budget in USD (e.g., `--budget 500`)
@@ -39,13 +40,23 @@ Example with constraints:
 Example with domain expertise:
 `/evoidea "Developer productivity tools" --examples examples/devtools.json`
 
+Example with a preference profile:
+`/evoidea "Developer tools" --profile prefs.json`
+
 ## Initialization
 
 1. Parse arguments from `$ARGUMENTS`
-2. If `--resume ID` provided:
+2. If `--profile FILE` provided:
+   - Read and parse the JSON file
+   - Extract weights from `derived.criterion_weights` (preferred) or `criterion_weights`
+   - Validate all 8 keys exist: `feasibility`, `speed_to_value`, `differentiation`, `market_size`, `distribution`, `moats`, `risk`, `clarity`
+   - Normalize weights so they sum to `1.0`
+3. If `--resume ID` provided:
    - Read `runs/<ID>/state.json`
+   - If `runs/<ID>/config.json` already contains `scoring_weights`, prefer those (resume should be consistent)
+   - If `--profile FILE` is also provided, override `scoring_weights` and rewrite `config.json`
    - Continue from saved iteration
-3. Otherwise:
+4. Otherwise:
    - Generate `run_id` using timestamp format: `run-YYYYMMDD-HHMMSS`
    - Create directory `runs/<run_id>/`
    - Initialize config.json and state.json
@@ -68,12 +79,24 @@ Example with domain expertise:
     "forbidden": ["crypto", "hardware"],
     "solo_dev": true
   },
-  "examples_file": "examples/devtools.json"
+  "examples_file": "examples/devtools.json",
+  "profile_file": "prefs.json",
+  "scoring_weights": {
+    "feasibility": 0.125,
+    "speed_to_value": 0.125,
+    "differentiation": 0.125,
+    "market_size": 0.125,
+    "distribution": 0.125,
+    "moats": 0.125,
+    "risk": 0.125,
+    "clarity": 0.125
+  }
 }
 ```
 
 Note: `constraints` object is optional. Omit or set to `null` if no constraints.
 Note: `examples_file` is optional. If provided, read the file and use for few-shot learning.
+Note: `profile_file` and `scoring_weights` are optional. If missing, use uniform weights.
 
 ### Initial state.json format
 ```json
@@ -205,7 +228,9 @@ Output JSON object mapping idea IDs to scores:
 
 For each idea:
 1. If `constraint_violation: true`, set `overall_score = 0` and `status = "eliminated"`
-2. Otherwise, compute `overall_score` as average of all criteria
+2. Otherwise, compute `overall_score` as weighted sum:
+   - `overall_score = Σ(score[k] * weight[k]) / Σ(weight[k])`
+   - Note: criterion `risk` is scored as "high = less risky" (a benefit), so do NOT invert it
 
 ### Phase 3: SELECT (no LLM)
 
@@ -226,7 +251,9 @@ IDEA:
 SCORES (0-10):
 {scores object}
 
-WEAKEST AREAS: {list 2-3 lowest scoring criteria}
+USER PRIORITIES (from profile weights): {top 2 weighted criteria}
+
+WEAKEST AREAS (weighted): {top 2-3 criteria by weight[k] * (10 - score[k])}
 
 BENCHMARK - Current best idea scores {best_score}/10
 
